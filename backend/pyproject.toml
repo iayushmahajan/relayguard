@@ -8,7 +8,12 @@ version = "0.1.0"
 description = "RelayGuard backend foundation"
 requires-python = ">=3.10,<3.14"
 dependencies = [
+  "alembic>=1.17.0,<1.19.0",
+  "asyncpg>=0.30.0,<0.31.0",
   "fastapi>=0.116.1,<0.117.0",
+  "pydantic-settings>=2.10.0,<3.0.0",
+  "sqlalchemy[asyncio]>=2.0.0,<2.1.0",
+  "structlog>=25.0.0,<27.0.0",
   "uvicorn[standard]>=0.35.0,<0.36.0",
 ]
 
@@ -21,7 +26,7 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["app"]
+packages = ["app", "app.api", "app.core", "app.db", "app.schemas"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

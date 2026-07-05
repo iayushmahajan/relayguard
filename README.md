@@ -1,8 +1,8 @@
 # RelayGuard
 
-RelayGuard Phase 0 provides a minimal frontend shell, a backend FastAPI app foundation, developer tooling, and CI quality checks.
+RelayGuard Phase 1A provides a minimal frontend shell, a backend FastAPI app foundation, developer tooling, CI quality checks, process health routing, typed configuration, structured logging, request correlation IDs, and lazy PostgreSQL async session infrastructure.
 
-Phase 0 intentionally includes **no application HTTP routes** and **no database schema or backend database connection**.
+Phase 1A intentionally includes **no database schema, ORM models, startup database connection, webhook handling, retry worker, replay worker, authentication, or AI execution**.
 
 ## Prerequisites (WSL/Linux)
 
@@ -36,6 +36,15 @@ docker compose down
 docker compose -f docker-compose.test.yml up -d
 docker compose -f docker-compose.test.yml down
 ```
+
+The test Compose file defaults to host port `5434` to avoid common local PostgreSQL port conflicts.
+
+## Backend API
+
+- `GET /api/v1/health` - process-only health check
+- `X-Correlation-ID` response header - valid inbound UUIDs are reused; otherwise the backend generates a UUID4
+
+The health endpoint does not check PostgreSQL readiness.
 
 ## Make targets
 

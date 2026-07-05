@@ -40,3 +40,16 @@
 - **Sources consulted:** GitHub Actions documentation for checkout, setup-node, setup-python, and caching behavior.
 - **Date:** 2026-07-04
 - **Alternatives:** Single combined job and Docker-based integration test execution were deferred.
+
+## Entry 7
+- **Decision:** Start Phase 1A with database-free backend infrastructure: pydantic-settings configuration, structlog JSON logging with contextvars, pure ASGI correlation-ID middleware, a process-only `GET /api/v1/health` route, and lazy SQLAlchemy 2 async engine/sessionmaker setup using asyncpg.
+- **Rationale:** Establishes backend cross-cutting foundations while keeping `make check` fast and avoiding premature database coupling, ORM models, migrations, or integration jobs.
+- **Sources consulted:** SQLAlchemy asyncio documentation, Alembic asyncio cookbook, Pydantic settings documentation, and structlog contextvars documentation.
+- **Date:** 2026-07-05
+- **Alternatives:** Database readiness in health checks, BaseHTTPMiddleware, SQLite test fallbacks, ORM models, and migration creation were rejected to preserve Phase 1A boundaries.
+
+## Entry 8
+- **Decision:** Change tracked test PostgreSQL host port defaults from `5433` to `5434`.
+- **Rationale:** The local environment already reserves host ports `5432` and `5433`; aligning the tracked example and Compose fallback avoids conflicts for RelayGuard test PostgreSQL.
+- **Sources consulted:** Local tracked `.env.example`, `docker-compose.test.yml`, and sanitized local `.env` values.
+- **Date:** 2026-07-05

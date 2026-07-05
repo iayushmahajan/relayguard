@@ -13,7 +13,13 @@
 - [x] Required validation sequence completed
 
 ## Phase 1 - Initial API and wiring
-- [ ] Not started
+- [x] Phase 1A backend process health route added
+- [x] Phase 1A typed settings added with pydantic-settings
+- [x] Phase 1A JSON structured logging added with structlog contextvars
+- [x] Phase 1A pure ASGI correlation-ID middleware added
+- [x] Phase 1A lazy SQLAlchemy 2 async engine/sessionmaker infrastructure added
+- [x] Phase 1A tracked test PostgreSQL host port default aligned to `5434`
+- [ ] PostgreSQL integration tests not started
 
 ## Phase 2 - Domain and persistence
 - [ ] Not started
