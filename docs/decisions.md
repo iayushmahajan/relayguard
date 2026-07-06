@@ -53,3 +53,23 @@
 - **Rationale:** The local environment already reserves host ports `5432` and `5433`; aligning the tracked example and Compose fallback avoids conflicts for RelayGuard test PostgreSQL.
 - **Sources consulted:** Local tracked `.env.example`, `docker-compose.test.yml`, and sanitized local `.env` values.
 - **Date:** 2026-07-05
+
+## Entry 9
+- **Decision:** Add the Phase 1B normalized PostgreSQL persistence foundation with SQLAlchemy ORM metadata, Alembic async migration configuration, and one initial migration.
+- **Rationale:** Establishes reviewed relational storage for identity, integration configuration, reliability, recovery, AI analysis records, and audit history without adding runtime database coupling or worker behavior.
+- **Sources consulted:** SQLAlchemy 2.0 asyncio documentation and Alembic async migration cookbook.
+- **Date:** 2026-07-05
+- **Alternatives:** PostgreSQL enum types, JSONB-as-generic-storage, JSONB GIN indexes, SQLite fallbacks, seed commands, and worker/replay/AI execution behavior were rejected to preserve the approved persistence-only scope.
+
+## Entry 10
+- **Decision:** Use string status columns with PostgreSQL check constraints and partial unique indexes for nullable/active uniqueness rules.
+- **Rationale:** Keeps status values migration-reviewable without PostgreSQL enum lifecycle overhead while enforcing event source identity and active replay-request invariants in the database.
+- **Sources consulted:** SQLAlchemy index/constraint APIs and Alembic autogeneration behavior.
+- **Date:** 2026-07-05
+
+## Entry 11
+- **Decision:** Keep Phase 1B limited to ORM metadata and Alembic schema migration work.
+- **Rationale:** The persistence foundation should be reviewable before adding operational database workflows or runtime behavior.
+- **Sources consulted:** Phase 1B implementation and validation results.
+- **Date:** 2026-07-06
+- **Deferred:** Idempotent seed data, PostgreSQL integration tests, Makefile database targets, a CI PostgreSQL integration job, webhook/reliability runtime behavior, retry execution, replay execution, and AI execution remain for the next Phase 1 slice.

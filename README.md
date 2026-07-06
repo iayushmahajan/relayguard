@@ -1,8 +1,8 @@
 # RelayGuard
 
-RelayGuard Phase 1A provides a minimal frontend shell, a backend FastAPI app foundation, developer tooling, CI quality checks, process health routing, typed configuration, structured logging, request correlation IDs, and lazy PostgreSQL async session infrastructure.
+RelayGuard Phase 1B provides a minimal frontend shell, a backend FastAPI app foundation, developer tooling, CI quality checks, process health routing, typed configuration, structured logging, request correlation IDs, lazy PostgreSQL async session infrastructure, and a normalized PostgreSQL persistence foundation.
 
-Phase 1A intentionally includes **no database schema, ORM models, startup database connection, webhook handling, retry worker, replay worker, authentication, or AI execution**.
+Phase 1B intentionally includes **no startup database connection, webhook handling, retry worker, replay worker, authentication behavior, signature verification, replay execution, or AI execution**.
 
 ## Prerequisites (WSL/Linux)
 
@@ -28,7 +28,7 @@ Phase 1A intentionally includes **no database schema, ORM models, startup databa
    .venv/bin/python -m pip install -e ".[dev]"
    ```
 
-## Docker database commands (Phase 0 skeleton only)
+## Docker database commands
 
 ```bash
 docker compose up -d
@@ -45,6 +45,20 @@ The test Compose file defaults to host port `5434` to avoid common local Postgre
 - `X-Correlation-ID` response header - valid inbound UUIDs are reused; otherwise the backend generates a UUID4
 
 The health endpoint does not check PostgreSQL readiness.
+
+## Backend migrations
+
+The backend uses SQLAlchemy 2 async metadata with Alembic's async migration bridge.
+
+Use the isolated test database on host port `5434` for migration validation:
+
+```bash
+cd backend
+POSTGRES_PORT=5434 .venv/bin/python -m alembic upgrade head
+POSTGRES_PORT=5434 .venv/bin/python -m alembic downgrade base
+```
+
+Phase 1B defines persistence tables and migration structure only. Idempotent seed data, PostgreSQL integration tests, Makefile database targets, a CI PostgreSQL integration job, webhook/reliability runtime behavior, retry execution, replay execution, and AI execution are deferred to the next Phase 1 slice.
 
 ## Make targets
 

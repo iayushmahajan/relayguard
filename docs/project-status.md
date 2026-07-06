@@ -19,7 +19,16 @@
 - [x] Phase 1A pure ASGI correlation-ID middleware added
 - [x] Phase 1A lazy SQLAlchemy 2 async engine/sessionmaker infrastructure added
 - [x] Phase 1A tracked test PostgreSQL host port default aligned to `5434`
-- [ ] PostgreSQL integration tests not started
+- [x] Phase 1B normalized SQLAlchemy ORM metadata added
+- [x] Phase 1B async Alembic environment added
+- [x] Phase 1B initial schema migration added
+- [x] Phase 1B database-free metadata tests added
+- [x] Phase 1B migration round-trip validated against isolated test PostgreSQL
+- [ ] Idempotent seed data deferred to next Phase 1 slice
+- [ ] PostgreSQL integration tests deferred to next Phase 1 slice
+- [ ] Makefile database targets deferred to next Phase 1 slice
+- [ ] CI PostgreSQL integration job deferred to next Phase 1 slice
+- [ ] Runtime webhook, retry, replay, authentication, and AI execution behavior not started
 
 ## Phase 2 - Domain and persistence
 - [ ] Not started
