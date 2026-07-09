@@ -72,4 +72,13 @@
 - **Rationale:** The persistence foundation should be reviewable before adding operational database workflows or runtime behavior.
 - **Sources consulted:** Phase 1B implementation and validation results.
 - **Date:** 2026-07-06
-- **Deferred:** Idempotent seed data, PostgreSQL integration tests, Makefile database targets, a CI PostgreSQL integration job, webhook/reliability runtime behavior, retry execution, replay execution, and AI execution remain for the next Phase 1 slice.
+- **Deferred at the time:** Idempotent seed data, PostgreSQL integration tests, Makefile database targets, a CI PostgreSQL integration job, webhook/reliability runtime behavior, retry execution, replay execution, and AI execution were left for Phase 1C or later.
+
+## Entry 12
+- **Decision:** Complete Phase 1C with idempotent baseline seeding, PostgreSQL-only integration tests, Makefile database targets, and a backend PostgreSQL integration CI job.
+- **Rationale:** Finishes Phase 1 persistence validation without adding runtime webhook, retry, replay, authentication, or AI execution behavior.
+- **Sources consulted:** Existing RelayGuard Compose configuration, GitHub Actions service-container configuration, pytest marker configuration, and SQLAlchemy async session patterns.
+- **Date:** 2026-07-06
+- **Details:** Integration tests require `POSTGRES_PORT=5434` locally to avoid the development PostgreSQL database on host port `5432`.
+- **Migration note:** Phase 1C preserves the committed `0001_initial_schema` migration and adds `0002_replay_statuses` to expand replay-request terminal statuses to include `resolved` and `executed`.
+- **Deferred:** Runtime webhook/reliability behavior, retry execution, replay execution, authentication behavior, and AI execution remain out of scope.

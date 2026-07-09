@@ -1,8 +1,13 @@
+from pathlib import Path
+
 from sqlalchemy import CheckConstraint, DateTime, Enum, Index, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from app.db import models  # noqa: F401
 from app.db.base import Base
+
+INITIAL_MIGRATION_PATH = "alembic/versions/0001_initial_schema_created_relayguard_initial_schema.py"
+REPLAY_STATUS_MIGRATION_PATH = "alembic/versions/0002_replay_statuses.py"
 
 REQUIRED_TABLES = {
     "users",
@@ -156,6 +161,47 @@ def test_event_state_transition_status_check_constraints_exist() -> None:
     ) in checks["ck_event_state_transitions_event_state_transition_to_status"]
 
 
+def test_replay_request_status_check_includes_terminal_statuses() -> None:
+    table = Base.metadata.tables["replay_requests"]
+    checks = {
+        constraint.name: str(constraint.sqltext)
+        for constraint in table.constraints
+        if isinstance(constraint, CheckConstraint)
+    }
+
+    replay_status_check = checks["ck_replay_requests_replay_request_status"]
+    assert "'resolved'" in replay_status_check
+    assert "'executed'" in replay_status_check
+
+
+def test_initial_migration_keeps_original_replay_request_statuses() -> None:
+    migration_text = _read_backend_file(INITIAL_MIGRATION_PATH)
+    replay_constraint_text = _migration_constraint_block(
+        migration_text,
+        "ck_replay_requests_replay_request_status",
+    )
+
+    assert (
+        "status IN ('pending', 'approved', 'running', 'completed', 'rejected', 'cancelled')"
+        in replay_constraint_text
+    )
+    assert "'resolved'" not in replay_constraint_text
+    assert "'executed'" not in replay_constraint_text
+
+
+def test_second_migration_expands_and_restores_replay_request_statuses() -> None:
+    migration_text = _read_backend_file(REPLAY_STATUS_MIGRATION_PATH)
+
+    assert 'revision: str = "0002_replay_statuses"' in migration_text
+    assert 'down_revision: str | None = "0001_initial_schema"' in migration_text
+    assert "'resolved'" in migration_text
+    assert "'executed'" in migration_text
+    assert (
+        "status IN ('pending', 'approved', 'running', 'completed', 'rejected', 'cancelled')"
+        in migration_text
+    )
+
+
 def _has_unique_constraint(table_name: str, columns: set[str]) -> bool:
     table = Base.metadata.tables[table_name]
     return any(
@@ -194,3 +240,14 @@ def _index_column_names(index: Index) -> set[str]:
         if isinstance(name, str):
             names.add(name)
     return names
+
+
+def _read_backend_file(path: str) -> str:
+    return (Path(__file__).resolve().parents[1] / path).read_text(encoding="utf-8")
+
+
+def _migration_constraint_block(migration_text: str, constraint_name: str) -> str:
+    constraint_index = migration_text.index(constraint_name)
+    block_start = migration_text.rfind("sa.CheckConstraint(", 0, constraint_index)
+    block_end = migration_text.index("),", constraint_index)
+    return migration_text[block_start:block_end]

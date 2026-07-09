@@ -24,10 +24,11 @@
 - [x] Phase 1B initial schema migration added
 - [x] Phase 1B database-free metadata tests added
 - [x] Phase 1B migration round-trip validated against isolated test PostgreSQL
-- [ ] Idempotent seed data deferred to next Phase 1 slice
-- [ ] PostgreSQL integration tests deferred to next Phase 1 slice
-- [ ] Makefile database targets deferred to next Phase 1 slice
-- [ ] CI PostgreSQL integration job deferred to next Phase 1 slice
+- [x] Phase 1C idempotent baseline seed command added
+- [x] Phase 1C PostgreSQL integration tests added
+- [x] Phase 1C Makefile database targets added
+- [x] Phase 1C backend PostgreSQL integration CI job added
+- [x] Phase 1C replay-request terminal status compatibility migration added
 - [ ] Runtime webhook, retry, replay, authentication, and AI execution behavior not started
 
 ## Phase 2 - Domain and persistence

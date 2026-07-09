@@ -630,7 +630,10 @@ class ReplayRequest(Base):
     __tablename__ = "replay_requests"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('pending', 'approved', 'running', 'completed', 'rejected', 'cancelled')",
+            "status IN ("
+            "'pending', 'approved', 'running', 'completed', 'resolved', "
+            "'rejected', 'executed', 'cancelled'"
+            ")",
             name="replay_request_status",
         ),
         Index(

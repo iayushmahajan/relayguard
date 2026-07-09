@@ -1,8 +1,8 @@
 # RelayGuard
 
-RelayGuard Phase 1B provides a minimal frontend shell, a backend FastAPI app foundation, developer tooling, CI quality checks, process health routing, typed configuration, structured logging, request correlation IDs, lazy PostgreSQL async session infrastructure, and a normalized PostgreSQL persistence foundation.
+RelayGuard Phase 1C provides a minimal frontend shell, a backend FastAPI app foundation, developer tooling, CI quality checks, process health routing, typed configuration, structured logging, request correlation IDs, lazy PostgreSQL async session infrastructure, a normalized PostgreSQL persistence foundation, idempotent baseline seeding, and PostgreSQL integration validation.
 
-Phase 1B intentionally includes **no startup database connection, webhook handling, retry worker, replay worker, authentication behavior, signature verification, replay execution, or AI execution**.
+Phase 1C intentionally includes **no startup database connection, webhook handling, retry worker, replay worker, authentication behavior, signature verification, replay execution, or AI execution**.
 
 ## Prerequisites (WSL/Linux)
 
@@ -49,6 +49,7 @@ The health endpoint does not check PostgreSQL readiness.
 ## Backend migrations
 
 The backend uses SQLAlchemy 2 async metadata with Alembic's async migration bridge.
+Phase 1C adds `0002_replay_statuses`, a forward migration that expands replay-request terminal statuses for integration-test compatibility while leaving the committed Phase 1B initial migration immutable.
 
 Use the isolated test database on host port `5434` for migration validation:
 
@@ -58,7 +59,31 @@ POSTGRES_PORT=5434 .venv/bin/python -m alembic upgrade head
 POSTGRES_PORT=5434 .venv/bin/python -m alembic downgrade base
 ```
 
-Phase 1B defines persistence tables and migration structure only. Idempotent seed data, PostgreSQL integration tests, Makefile database targets, a CI PostgreSQL integration job, webhook/reliability runtime behavior, retry execution, replay execution, and AI execution are deferred to the next Phase 1 slice.
+Phase 1C completes the approved Phase 1 persistence validation slice. Webhook/reliability runtime behavior, retry execution, replay execution, and AI execution remain deferred.
+
+## Backend seed command
+
+The backend seed command is idempotent and creates only baseline roles plus disabled sandbox integration stubs:
+
+```bash
+cd backend
+.venv/bin/python -m app.commands.seed
+```
+
+It creates `admin`, `operator`, and `viewer` roles when absent, plus disabled `github-sandbox` and `stripe-sandbox` integrations when absent. It does not create users, secrets, destinations, routing rules, events, deliveries, retries, replay requests, or AI records.
+
+## PostgreSQL integration tests
+
+Normal checks remain database-free. PostgreSQL integration tests use only the isolated test database on host port `5434`:
+
+```bash
+make db-test-up
+make migrate-test
+make seed-backend-test
+make test-backend-integration
+```
+
+The integration test target leaves the isolated test database running.
 
 ## Make targets
 
@@ -71,3 +96,11 @@ Phase 1B defines persistence tables and migration structure only. Idempotent see
 - `make check` - run lint, format-check, typecheck, test, then frontend build
 - `make up` - start development Compose services
 - `make down` - stop development Compose services
+- `make db-test-up` - start only the isolated test PostgreSQL service and wait for health
+- `make db-test-down` - stop only the isolated test PostgreSQL service
+- `make db-test-reset` - remove only the isolated test PostgreSQL service and its named test volume
+- `make migrate` - migrate the configured development database
+- `make migrate-test` - migrate the isolated test database on host port `5434`
+- `make seed-backend` - seed the configured development database
+- `make seed-backend-test` - seed the isolated test database on host port `5434`
+- `make test-backend-integration` - migrate and run only PostgreSQL integration tests
