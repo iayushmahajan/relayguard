@@ -82,3 +82,31 @@
 - **Details:** Integration tests require `POSTGRES_PORT=5434` locally to avoid the development PostgreSQL database on host port `5432`.
 - **Migration note:** Phase 1C preserves the committed `0001_initial_schema` migration and adds `0002_replay_statuses` to expand replay-request terminal statuses to include `resolved` and `executed`.
 - **Deferred:** Runtime webhook/reliability behavior, retry execution, replay execution, authentication behavior, and AI execution remain out of scope.
+
+## Entry 13
+- **Decision:** Use a small canonical webhook envelope with `event_type`, `deduplication_key`, optional `source_event_id`, and object `payload`.
+- **Rationale:** The envelope provides stable event classification, deterministic source identity, and a single JSON object payload without coupling RelayGuard to any one provider's native body shape.
+- **Date:** 2026-07-09
+- **Alternatives:** Provider-specific envelopes and raw-body-only storage were rejected for Phase 2 because they would make canonical lifecycle tests less deterministic.
+
+## Entry 14
+- **Decision:** Keep deduplication deterministic and database-backed with PostgreSQL unique constraints and conflict-safe insert behavior.
+- **Rationale:** The existing unique `(integration_id, deduplication_key)` constraint and partial unique `(integration_id, source_event_id)` index prevent concurrent duplicate submissions from creating two canonical events.
+- **Date:** 2026-07-09
+- **Alternatives:** In-memory locks, pre-insert lookup only, workers, queues, and AI-based classification were rejected because they do not provide the same durable concurrency guarantee in Phase 2.
+
+## Entry 15
+- **Decision:** Manually parse known-integration webhook requests instead of relying on FastAPI automatic body validation.
+- **Rationale:** Known integrations must receive a rejected `webhook_receipts` row for unsupported content type, invalid JSON, invalid envelope, disabled integration, and invalid fields. Automatic body validation would reject before the service could record that attempt.
+- **Date:** 2026-07-09
+
+## Entry 16
+- **Decision:** Unknown integration slugs return `404` and create no receipt.
+- **Rationale:** `webhook_receipts.integration_id` is required, so an unknown slug has no valid foreign key target. Creating a synthetic receipt would require a schema or domain concept that Phase 2 intentionally does not introduce.
+- **Date:** 2026-07-09
+
+## Entry 17
+- **Decision:** Add `0003_webhook_intake_support` and keep existing hash column names.
+- **Rationale:** Phase 2 needs one forward migration to permit duplicate receipt status, store safe request metadata, align `events.event_type` with the 255-character API contract, and expose `accepted_at`. Existing `webhook_receipts.raw_body_hash` and `event_payloads.payload_hash` already safely store SHA-256 values, so renaming them would add avoidable migration churn.
+- **Date:** 2026-07-09
+- **Downgrade note:** The downgrade restores the Phase 1C receipt status set, drops Phase 2 metadata columns, drops `accepted_at`, and truncates event types above 200 characters before restoring the old column length.

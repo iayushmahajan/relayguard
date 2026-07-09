@@ -1,5 +1,7 @@
 """Lazy async SQLAlchemy engine and sessionmaker infrastructure."""
 
+from collections.abc import AsyncIterator
+
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -31,6 +33,13 @@ def get_async_sessionmaker(settings: Settings | None = None) -> async_sessionmak
             expire_on_commit=False,
         )
     return _sessionmaker
+
+
+async def get_async_session() -> AsyncIterator[AsyncSession]:
+    """Yield a request-scoped async database session."""
+    async_sessionmaker_ = get_async_sessionmaker()
+    async with async_sessionmaker_() as session:
+        yield session
 
 
 async def dispose_async_engine() -> None:

@@ -31,8 +31,16 @@
 - [x] Phase 1C replay-request terminal status compatibility migration added
 - [ ] Runtime webhook, retry, replay, authentication, and AI execution behavior not started
 
-## Phase 2 - Domain and persistence
-- [ ] Not started
+## Phase 2 - Deterministic webhook intake and canonical event lifecycle
+- [x] Added `0003_webhook_intake_support` forward migration with downgrade
+- [x] Added manual known-integration webhook intake route
+- [x] Added service-layer orchestration for accepted, duplicate, and rejected attempts
+- [x] Added Pydantic webhook and event metadata schemas
+- [x] Added safe event metadata lookup route
+- [x] Added PostgreSQL integration tests for accepted, duplicate, rejected, invalid, unknown, and lookup behavior
+- [x] Preserved database-free `make check` behavior
+- [x] Validated PostgreSQL integration checks against isolated host port `5434`
+- [ ] Delivery execution, retry execution, replay execution, authentication behavior, signature verification, and AI execution not started
 
 ## Phase 3 - Advanced capabilities
 - [ ] Not started

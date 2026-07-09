@@ -1,8 +1,8 @@
 # RelayGuard
 
-RelayGuard Phase 1C provides a minimal frontend shell, a backend FastAPI app foundation, developer tooling, CI quality checks, process health routing, typed configuration, structured logging, request correlation IDs, lazy PostgreSQL async session infrastructure, a normalized PostgreSQL persistence foundation, idempotent baseline seeding, and PostgreSQL integration validation.
+RelayGuard Phase 2 provides a minimal frontend shell, a backend FastAPI app foundation, developer tooling, CI quality checks, process health routing, typed configuration, structured logging, request correlation IDs, lazy PostgreSQL async session infrastructure, a normalized PostgreSQL persistence foundation, idempotent baseline seeding, PostgreSQL integration validation, deterministic known-integration webhook intake, canonical accepted-event creation, duplicate detection, rejected receipt recording, and safe event metadata retrieval.
 
-Phase 1C intentionally includes **no startup database connection, webhook handling, retry worker, replay worker, authentication behavior, signature verification, replay execution, or AI execution**.
+Phase 2 intentionally includes **no startup database connection, retry worker, replay worker, authentication behavior, signature verification, delivery execution, retry execution, replay execution, or AI execution**.
 
 ## Prerequisites (WSL/Linux)
 
@@ -42,14 +42,54 @@ The test Compose file defaults to host port `5434` to avoid common local Postgre
 ## Backend API
 
 - `GET /api/v1/health` - process-only health check
+- `POST /api/v1/integrations/{integration_slug}/webhooks` - deterministic known-integration webhook intake
+- `GET /api/v1/events/{event_id}` - safe canonical event metadata lookup
 - `X-Correlation-ID` response header - valid inbound UUIDs are reused; otherwise the backend generates a UUID4
 
 The health endpoint does not check PostgreSQL readiness.
 
+### Webhook intake example
+
+Create or enable a known integration in PostgreSQL, then post the JSON envelope:
+
+```bash
+curl -i \
+  -H "Content-Type: application/json" \
+  -H "X-Correlation-ID: 0d47f0f4-2bf1-4087-b6be-43e3b2d0b4db" \
+  -d '{
+    "event_type": "invoice.paid",
+    "deduplication_key": "stable-source-or-provider-key",
+    "source_event_id": "provider-event-123",
+    "payload": {"amount": 4200}
+  }' \
+  http://localhost:8000/api/v1/integrations/stripe-sandbox/webhooks
+```
+
+An accepted active-integration request returns HTTP `202`:
+
+```json
+{
+  "receipt_id": "00000000-0000-0000-0000-000000000000",
+  "event_id": "00000000-0000-0000-0000-000000000000",
+  "status": "accepted",
+  "duplicate": false
+}
+```
+
+A duplicate accepted envelope returns HTTP `200` with `duplicate: true` and the original `event_id`. A disabled known integration or invalid known-integration request records one rejected receipt and returns a clear 4xx response. An unknown integration returns `404` and creates no receipt because there is no integration foreign key target.
+
+### Event metadata example
+
+```bash
+curl -i http://localhost:8000/api/v1/events/00000000-0000-0000-0000-000000000000
+```
+
+The response contains safe metadata only and never includes event payload contents.
+
 ## Backend migrations
 
 The backend uses SQLAlchemy 2 async metadata with Alembic's async migration bridge.
-Phase 1C adds `0002_replay_statuses`, a forward migration that expands replay-request terminal statuses for integration-test compatibility while leaving the committed Phase 1B initial migration immutable.
+Phase 1C adds `0002_replay_statuses`, a forward migration that expands replay-request terminal statuses for integration-test compatibility while leaving the committed Phase 1B initial migration immutable. Phase 2 adds `0003_webhook_intake_support`, a forward migration that adds webhook receipt request metadata, permits duplicate receipt status, widens stored event types to the API contract, and records accepted event timestamps.
 
 Use the isolated test database on host port `5434` for migration validation:
 
@@ -59,7 +99,7 @@ POSTGRES_PORT=5434 .venv/bin/python -m alembic upgrade head
 POSTGRES_PORT=5434 .venv/bin/python -m alembic downgrade base
 ```
 
-Phase 1C completes the approved Phase 1 persistence validation slice. Webhook/reliability runtime behavior, retry execution, replay execution, and AI execution remain deferred.
+Phase 2 completes deterministic webhook intake and canonical event lifecycle creation. Delivery records, retry execution, replay execution, authentication behavior, signature verification, and AI execution remain deferred.
 
 ## Backend seed command
 

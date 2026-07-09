@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from sqlalchemy import CheckConstraint, DateTime, Enum, Index, UniqueConstraint
+from sqlalchemy import CheckConstraint, DateTime, Enum, Index, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from app.db import models  # noqa: F401
@@ -8,6 +8,7 @@ from app.db.base import Base
 
 INITIAL_MIGRATION_PATH = "alembic/versions/0001_initial_schema_created_relayguard_initial_schema.py"
 REPLAY_STATUS_MIGRATION_PATH = "alembic/versions/0002_replay_statuses.py"
+WEBHOOK_INTAKE_MIGRATION_PATH = "alembic/versions/0003_webhook_intake_support.py"
 
 REQUIRED_TABLES = {
     "users",
@@ -174,6 +175,35 @@ def test_replay_request_status_check_includes_terminal_statuses() -> None:
     assert "'executed'" in replay_status_check
 
 
+def test_webhook_receipt_status_check_includes_duplicate() -> None:
+    table = Base.metadata.tables["webhook_receipts"]
+    checks = {
+        constraint.name: str(constraint.sqltext)
+        for constraint in table.constraints
+        if isinstance(constraint, CheckConstraint)
+    }
+
+    receipt_status_check = checks["ck_webhook_receipts_webhook_receipt_status"]
+    assert "'accepted'" in receipt_status_check
+    assert "'duplicate'" in receipt_status_check
+    assert "'rejected'" in receipt_status_check
+
+
+def test_phase_2_request_metadata_columns_exist() -> None:
+    receipt_columns = Base.metadata.tables["webhook_receipts"].columns
+    event_columns = Base.metadata.tables["events"].columns
+
+    assert "request_method" in receipt_columns
+    assert "request_path" in receipt_columns
+    assert "content_type" in receipt_columns
+    assert "body_size_bytes" in receipt_columns
+    assert "correlation_id" in receipt_columns
+    assert "accepted_at" in event_columns
+    event_type = event_columns["event_type"].type
+    assert isinstance(event_type, String)
+    assert event_type.length == 255
+
+
 def test_initial_migration_keeps_original_replay_request_statuses() -> None:
     migration_text = _read_backend_file(INITIAL_MIGRATION_PATH)
     replay_constraint_text = _migration_constraint_block(
@@ -200,6 +230,19 @@ def test_second_migration_expands_and_restores_replay_request_statuses() -> None
         "status IN ('pending', 'approved', 'running', 'completed', 'rejected', 'cancelled')"
         in migration_text
     )
+
+
+def test_third_migration_adds_webhook_intake_support() -> None:
+    migration_text = _read_backend_file(WEBHOOK_INTAKE_MIGRATION_PATH)
+
+    assert 'revision: str = "0003_webhook_intake_support"' in migration_text
+    assert 'down_revision: str | None = "0002_replay_statuses"' in migration_text
+    assert "'duplicate'" in migration_text
+    assert '"request_method"' in migration_text
+    assert '"request_path"' in migration_text
+    assert '"body_size_bytes"' in migration_text
+    assert '"correlation_id"' in migration_text
+    assert '"accepted_at"' in migration_text
 
 
 def _has_unique_constraint(table_name: str, columns: set[str]) -> bool:

@@ -294,7 +294,7 @@ class WebhookReceipt(Base):
     __tablename__ = "webhook_receipts"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('received', 'accepted', 'rejected')",
+            "status IN ('received', 'accepted', 'duplicate', 'rejected')",
             name="webhook_receipt_status",
         ),
     )
@@ -312,6 +312,11 @@ class WebhookReceipt(Base):
         server_default=func.now(),
     )
     source_ip: Mapped[str | None] = mapped_column(String(64))
+    request_method: Mapped[str | None] = mapped_column(String(16))
+    request_path: Mapped[str | None] = mapped_column(Text)
+    content_type: Mapped[str | None] = mapped_column(String(255))
+    body_size_bytes: Mapped[int | None] = mapped_column(Integer)
+    correlation_id: Mapped[str | None] = mapped_column(String(64))
     headers: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     query_params: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     raw_body_hash: Mapped[str | None] = mapped_column(String(255))
@@ -356,9 +361,14 @@ class Event(Base):
     )
     deduplication_key: Mapped[str] = mapped_column(String(255), nullable=False)
     source_event_id: Mapped[str | None] = mapped_column(String(255))
-    event_type: Mapped[str] = mapped_column(String(200), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="accepted")
     received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    accepted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),

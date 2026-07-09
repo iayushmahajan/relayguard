@@ -51,7 +51,7 @@ def test_alembic_migration_is_applied(session_factory: async_sessionmaker[AsyncS
         async with session_factory() as session:
             return str(await session.scalar(text("SELECT version_num FROM alembic_version")))
 
-    assert asyncio.run(check_revision()) == "0002_replay_statuses"
+    assert asyncio.run(check_revision()) == "0003_webhook_intake_support"
 
 
 def test_seed_command_is_idempotent(session_factory: async_sessionmaker[AsyncSession]) -> None:
