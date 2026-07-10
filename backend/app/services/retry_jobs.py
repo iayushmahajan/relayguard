@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models
 from app.schemas.delivery_execution import RetryJobExecutionResponse, RetryJobResponse
-from app.services.delivery_execution import execute_delivery
+from app.services.delivery_execution import delivery_needs_no_retry, execute_delivery
 
 logger = structlog.get_logger(__name__)
 
@@ -53,6 +53,15 @@ async def execute_retry_job(
             detail="retry job is not due",
             response=None,
         )
+    delivery = await session.get(models.EventDelivery, retry_job.delivery_id)
+    if delivery is None or delivery_needs_no_retry(delivery):
+        retry_job.status = "cancelled"
+        await session.commit()
+        return RetryJobExecutionResult(
+            status_code=409,
+            detail="retry job delivery is no longer executable",
+            response=None,
+        )
 
     retry_job.status = "claimed"
     retry_job.claimed_at = current_time
@@ -67,6 +76,8 @@ async def execute_retry_job(
         now=current_time,
     )
     if delivery_result.response is None:
+        retry_job.status = "cancelled"
+        await session.commit()
         return RetryJobExecutionResult(
             status_code=delivery_result.status_code,
             detail=delivery_result.detail,

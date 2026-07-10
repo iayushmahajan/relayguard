@@ -9,7 +9,7 @@ from typing import Any
 
 import httpx
 import structlog
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +22,7 @@ _DEFAULT_MAX_ATTEMPTS = 3
 _DEFAULT_BACKOFF_SECONDS = [60, 300]
 _EXECUTABLE_STATUSES = {"scheduled", "failed"}
 _CONFLICT_STATUSES = {"delivered", "dead_lettered", "cancelled", "in_progress", "succeeded"}
+_NO_RETRY_NEEDED_STATUSES = {"delivered", "dead_lettered", "cancelled"}
 _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 _NON_RETRYABLE_STATUS_CODES = {400, 401, 403, 404, 405, 409, 410, 422}
 
@@ -98,6 +99,11 @@ async def execute_delivery(
 
     if outcome.is_success:
         _mark_delivery_delivered(delivery=delivery, now=finished_at, attempt_number=attempt_number)
+        await cancel_pending_retry_jobs_for_delivery(
+            session=session,
+            delivery_id=delivery.id,
+            now=finished_at,
+        )
         await _mark_event_delivered_when_complete(session=session, event=event, now=finished_at)
     elif outcome.is_retryable and attempt_number < max_attempts:
         next_attempt_at = finished_at + timedelta(
@@ -130,6 +136,11 @@ async def execute_delivery(
             delivery_id=delivery.id,
             outcome=outcome,
             exhausted=outcome.is_retryable,
+        )
+        await cancel_pending_retry_jobs_for_delivery(
+            session=session,
+            delivery_id=delivery.id,
+            now=finished_at,
         )
         dead_lettered = True
 
@@ -194,6 +205,28 @@ async def list_delivery_attempts(
         )
     ).all()
     return [_to_attempt_response(attempt) for attempt in attempts]
+
+
+async def cancel_pending_retry_jobs_for_delivery(
+    *,
+    session: AsyncSession,
+    delivery_id: uuid.UUID,
+    now: datetime,
+) -> None:
+    """Cancel pending retry jobs when a delivery no longer needs retry execution."""
+    await session.execute(
+        update(models.RetryJob)
+        .where(
+            models.RetryJob.delivery_id == delivery_id,
+            models.RetryJob.status == "pending",
+        )
+        .values(status="cancelled", updated_at=now)
+    )
+
+
+def delivery_needs_no_retry(delivery: models.EventDelivery) -> bool:
+    """Return whether a delivery is terminal for retry-job purposes."""
+    return delivery.status in _NO_RETRY_NEEDED_STATUSES
 
 
 def _to_attempt_response(attempt: models.DeliveryAttempt) -> DeliveryAttemptResponse:

@@ -194,9 +194,10 @@ secrets. Timeout defaults to 10 seconds and can be overridden by destination
 ```
 
 Every execution attempt creates one `delivery_attempts` row. HTTP `2xx` marks the delivery
-`delivered`. HTTP `429`, `500`, `502`, `503`, `504`, timeout, and network/connect errors are
-retryable until the configured max attempts is exhausted. HTTP `400`, `401`, `403`, `404`, `405`,
-`409`, `410`, `422`, and other terminal responses dead-letter the delivery.
+`delivered` and cancels any pending retry jobs for that delivery. HTTP `429`, `500`, `502`,
+`503`, `504`, timeout, and network/connect errors are retryable until the configured max attempts
+is exhausted. HTTP `400`, `401`, `403`, `404`, `405`, `409`, `410`, `422`, and other terminal
+responses dead-letter the delivery and cancel any pending retry jobs for that delivery.
 
 ## Retry Jobs
 
@@ -214,7 +215,9 @@ marking the retry job completed.
 }
 ```
 
-Future, claimed, completed, and cancelled retry jobs return `409`.
+Future, claimed, completed, and cancelled retry jobs return `409`. If a pending retry job becomes
+stale because its delivery is already delivered, dead-lettered, or cancelled, RelayGuard cancels
+the stale retry job before returning `409`.
 
 `GET /api/v1/deliveries/{delivery_id}/retry-jobs`
 

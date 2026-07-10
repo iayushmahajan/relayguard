@@ -278,6 +278,83 @@ def test_due_retry_job_executes_delivery_and_completed_jobs_conflict(
     asyncio.run(exercise())
 
 
+def test_stale_pending_retry_job_is_cancelled_after_direct_success(
+    app: FastAPI,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async def exercise() -> None:
+        delivery = await _create_delivery(session_factory)
+        responses = [httpx.Response(500), httpx.Response(200)]
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            response = responses.pop(0)
+            response.request = request
+            return response
+
+        _override_http_client(app, handler)
+        async with _client(app) as client:
+            first_response = await client.post(f"/api/v1/deliveries/{delivery.id}/execute")
+
+        assert first_response.status_code == 200
+        retry_job_id = await _make_pending_retry_due(session_factory, delivery.id)
+
+        async with _client(app) as client:
+            direct_success_response = await client.post(f"/api/v1/deliveries/{delivery.id}/execute")
+            stale_retry_response = await client.post(f"/api/v1/retry-jobs/{retry_job_id}/execute")
+
+        assert direct_success_response.status_code == 200
+        assert direct_success_response.json()["status"] == "delivered"
+        assert stale_retry_response.status_code == 409
+        _assert_correlation_id(direct_success_response)
+        _assert_correlation_id(stale_retry_response)
+        async with session_factory() as session:
+            refreshed_delivery = await session.get(models.EventDelivery, delivery.id)
+            retry_job = await session.get(models.RetryJob, retry_job_id)
+            assert refreshed_delivery is not None
+            assert refreshed_delivery.status == "delivered"
+            assert retry_job is not None
+            assert retry_job.status == "cancelled"
+            assert retry_job.status != "pending"
+            assert retry_job.status != "claimed"
+            assert await _count(session, models.DeliveryAttempt) == 2
+            assert await _count(session, models.DeadLetterEvent) == 0
+
+    asyncio.run(exercise())
+
+
+def test_stale_pending_retry_job_is_cancelled_after_direct_dead_letter(
+    app: FastAPI,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async def exercise() -> None:
+        delivery = await _create_delivery(session_factory, configuration={"max_attempts": 2})
+        _override_http_client(app, lambda request: httpx.Response(500, request=request))
+
+        async with _client(app) as client:
+            first_response = await client.post(f"/api/v1/deliveries/{delivery.id}/execute")
+
+        assert first_response.status_code == 200
+        retry_job_id = await _make_pending_retry_due(session_factory, delivery.id)
+
+        async with _client(app) as client:
+            terminal_response = await client.post(f"/api/v1/deliveries/{delivery.id}/execute")
+
+        assert terminal_response.status_code == 200
+        assert terminal_response.json()["status"] == "dead_lettered"
+        _assert_correlation_id(terminal_response)
+        async with session_factory() as session:
+            refreshed_delivery = await session.get(models.EventDelivery, delivery.id)
+            retry_job = await session.get(models.RetryJob, retry_job_id)
+            assert refreshed_delivery is not None
+            assert refreshed_delivery.status == "dead_lettered"
+            assert retry_job is not None
+            assert retry_job.status == "cancelled"
+            assert retry_job.status != "claimed"
+            assert await _count(session, models.DeadLetterEvent) == 1
+
+    asyncio.run(exercise())
+
+
 def test_future_and_cancelled_retry_jobs_return_conflict(
     app: FastAPI,
     session_factory: async_sessionmaker[AsyncSession],
@@ -306,6 +383,34 @@ def test_future_and_cancelled_retry_jobs_return_conflict(
         assert cancelled_response.status_code == 409
         _assert_correlation_id(future_response)
         _assert_correlation_id(cancelled_response)
+
+    asyncio.run(exercise())
+
+
+def test_claimed_retry_job_returns_conflict_and_remains_claimed(
+    app: FastAPI,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async def exercise() -> None:
+        delivery = await _create_delivery(session_factory, status="failed")
+        claimed_job_id = await _create_retry_job(
+            session_factory,
+            delivery.id,
+            status="claimed",
+            run_at=datetime.now(timezone.utc) - timedelta(minutes=5),
+        )
+        _override_http_client(app, lambda request: httpx.Response(200, request=request))
+
+        async with _client(app) as client:
+            response = await client.post(f"/api/v1/retry-jobs/{claimed_job_id}/execute")
+
+        assert response.status_code == 409
+        _assert_correlation_id(response)
+        async with session_factory() as session:
+            retry_job = await session.get(models.RetryJob, claimed_job_id)
+            assert retry_job is not None
+            assert retry_job.status == "claimed"
+            assert await _count(session, models.DeliveryAttempt) == 0
 
     asyncio.run(exercise())
 
@@ -469,6 +574,27 @@ async def _create_retry_job(
             run_at=run_at,
         )
         session.add(retry_job)
+        await session.commit()
+        return retry_job.id
+
+
+async def _make_pending_retry_due(
+    session_factory: async_sessionmaker[AsyncSession],
+    delivery_id: uuid.UUID,
+) -> uuid.UUID:
+    async with session_factory() as session:
+        retry_job = await session.scalar(
+            select(models.RetryJob).where(
+                models.RetryJob.delivery_id == delivery_id,
+                models.RetryJob.status == "pending",
+            )
+        )
+        delivery = await session.get(models.EventDelivery, delivery_id)
+        assert retry_job is not None
+        assert delivery is not None
+        due_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        retry_job.run_at = due_at
+        delivery.next_attempt_at = due_at
         await session.commit()
         return retry_job.id
 

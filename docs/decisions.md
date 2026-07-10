@@ -156,3 +156,4 @@
 - **Decision:** Phase 4 exposes explicit execution APIs instead of adding a background worker or external queue.
 - **Rationale:** Explicit API-driven execution proves delivery, retry, and dead-letter state transitions without introducing Celery, Redis, Kafka, cloud services, or a long-running worker before those are specified.
 - **Date:** 2026-07-10
+- **Stale retry note:** When a delivery reaches a terminal no-retry-needed status through direct execution, pending retry jobs for that delivery are cancelled. If a pending retry job is executed after its delivery has already become terminal, the retry job is cancelled before RelayGuard returns `409` so it is not left stuck as claimed.
