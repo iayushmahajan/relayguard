@@ -11,6 +11,7 @@ REPLAY_STATUS_MIGRATION_PATH = "alembic/versions/0002_replay_statuses.py"
 WEBHOOK_INTAKE_MIGRATION_PATH = "alembic/versions/0003_webhook_intake_support.py"
 ROUTING_SCHEDULE_MIGRATION_PATH = "alembic/versions/0004_routing_schedule.py"
 DELIVERY_EXECUTION_MIGRATION_PATH = "alembic/versions/0005_delivery_execution.py"
+REPLAY_WORKFLOW_MIGRATION_PATH = "alembic/versions/0006_replay_workflow.py"
 
 REQUIRED_TABLES = {
     "users",
@@ -136,7 +137,7 @@ def test_required_partial_unique_indexes_exist() -> None:
         table_name="replay_requests",
         index_name="uq_replay_requests_active_dead_letter_event_id",
         columns={"dead_letter_event_id"},
-        where_fragment="status IN ('pending', 'approved')",
+        where_fragment="status IN ('pending', 'approved', 'running')",
     )
     assert _has_partial_unique_index(
         table_name="retry_jobs",
@@ -323,6 +324,25 @@ def test_fifth_migration_adds_delivery_execution_support() -> None:
     assert "uq_retry_jobs_pending_delivery_run_at" in migration_text
 
 
+def test_phase_5_replay_workflow_columns_exist() -> None:
+    replay_columns = Base.metadata.tables["replay_requests"].columns
+
+    assert "updated_at" in replay_columns
+    assert "executed_at" in replay_columns
+    assert "resolved_at" in replay_columns
+
+
+def test_sixth_migration_adds_replay_workflow_support() -> None:
+    migration_text = _read_backend_file(REPLAY_WORKFLOW_MIGRATION_PATH)
+
+    assert 'revision: str = "0006_replay_workflow"' in migration_text
+    assert 'down_revision: str | None = "0005_delivery_execution"' in migration_text
+    assert '"updated_at"' in migration_text
+    assert '"executed_at"' in migration_text
+    assert '"resolved_at"' in migration_text
+    assert "status IN ('pending', 'approved', 'running')" in migration_text
+
+
 def _has_unique_constraint(table_name: str, columns: set[str]) -> bool:
     table = Base.metadata.tables[table_name]
     return any(
@@ -356,11 +376,11 @@ def _has_partial_unique_index(
 
 def _check_constraints(table_name: str) -> dict[str, str]:
     table = Base.metadata.tables[table_name]
-    return {
-        constraint.name: str(constraint.sqltext)
-        for constraint in table.constraints
-        if isinstance(constraint, CheckConstraint)
-    }
+    checks: dict[str, str] = {}
+    for constraint in table.constraints:
+        if isinstance(constraint, CheckConstraint) and isinstance(constraint.name, str):
+            checks[constraint.name] = str(constraint.sqltext)
+    return checks
 
 
 def _index_column_names(index: Index) -> set[str]:

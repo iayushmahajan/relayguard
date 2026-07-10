@@ -1,8 +1,8 @@
 # RelayGuard
 
-RelayGuard Phase 4 provides a minimal frontend shell, a backend FastAPI app foundation, developer tooling, CI quality checks, process health routing, typed configuration, structured logging, request correlation IDs, lazy PostgreSQL async session infrastructure, a normalized PostgreSQL persistence foundation, idempotent baseline seeding, PostgreSQL integration validation, deterministic known-integration webhook intake, canonical accepted-event creation, duplicate detection, rejected receipt recording, safe event metadata retrieval, deterministic routing rules, downstream destination management, durable delivery scheduling records, HTTP delivery execution, retry attempt recording, durable retry jobs, and dead-letter records.
+RelayGuard Phase 5 provides a minimal frontend shell, a backend FastAPI app foundation, developer tooling, CI quality checks, process health routing, typed configuration, structured logging, request correlation IDs, lazy PostgreSQL async session infrastructure, a normalized PostgreSQL persistence foundation, idempotent baseline seeding, PostgreSQL integration validation, deterministic known-integration webhook intake, canonical accepted-event creation, duplicate detection, rejected receipt recording, safe event metadata retrieval, deterministic routing rules, downstream destination management, durable delivery scheduling records, HTTP delivery execution, retry attempt recording, durable retry jobs, dead-letter records, and a human-reviewed replay workflow for dead-letter recovery.
 
-Phase 4 intentionally includes **no startup database connection, background HTTP delivery worker, replay worker, authentication behavior, signature verification, replay execution, AI execution, external queue, Redis, Celery, Kafka, or cloud service dependency**.
+Phase 5 intentionally includes **no startup database connection, background HTTP delivery worker, replay worker, authentication behavior, signature verification, AI execution, external queue, Redis, Celery, Kafka, or cloud service dependency**. Replay execution is explicit API-driven recovery only.
 
 ## Prerequisites (WSL/Linux)
 
@@ -55,6 +55,12 @@ The test Compose file defaults to host port `5434` to avoid common local Postgre
 - `GET /api/v1/deliveries/{delivery_id}/retry-jobs` - list safe retry job metadata
 - `GET /api/v1/deliveries/{delivery_id}/attempts` - list safe delivery attempt metadata
 - `GET /api/v1/dead-letters` - list safe dead-letter metadata
+- `POST /api/v1/dead-letters/{dead_letter_id}/replay-requests` - create a human-reviewed replay request
+- `GET /api/v1/replay-requests` - list safe replay request metadata
+- `GET /api/v1/replay-requests/{replay_request_id}` - get safe replay request metadata
+- `POST /api/v1/replay-requests/{replay_request_id}/approve` - approve a pending replay request
+- `POST /api/v1/replay-requests/{replay_request_id}/reject` - reject a pending or unstarted approved replay request
+- `POST /api/v1/replay-requests/{replay_request_id}/execute` - explicitly execute an approved replay request
 - `X-Correlation-ID` response header - valid inbound UUIDs are reused; otherwise the backend generates a UUID4
 
 The health endpoint does not check PostgreSQL readiness.
@@ -182,10 +188,64 @@ curl -i \
 
 Phase 4 sends one HTTP POST per explicit execution request. It records every attempt, creates durable retry jobs for retryable failures, and creates one dead-letter record per terminal delivery. It does not run a background worker.
 
+### Replay workflow examples
+
+Create a replay request from an open dead letter:
+
+```bash
+curl -i \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reason": "Downstream service has recovered.",
+    "requested_by": "system-operator"
+  }' \
+  http://localhost:8000/api/v1/dead-letters/00000000-0000-0000-0000-000000000000/replay-requests
+```
+
+Approve the request after review:
+
+```bash
+curl -i \
+  -H "Content-Type: application/json" \
+  -d '{
+    "approved_by": "system-operator",
+    "note": "Destination is healthy again."
+  }' \
+  http://localhost:8000/api/v1/replay-requests/00000000-0000-0000-0000-000000000000/approve
+```
+
+Reject a request that should not be replayed:
+
+```bash
+curl -i \
+  -H "Content-Type: application/json" \
+  -d '{
+    "rejected_by": "system-operator",
+    "reason": "Payload should not be resent."
+  }' \
+  http://localhost:8000/api/v1/replay-requests/00000000-0000-0000-0000-000000000000/reject
+```
+
+Execute an approved replay request:
+
+```bash
+curl -i -X POST \
+  http://localhost:8000/api/v1/replay-requests/00000000-0000-0000-0000-000000000000/execute
+```
+
+List and inspect replay requests:
+
+```bash
+curl -i "http://localhost:8000/api/v1/replay-requests?status=pending"
+curl -i http://localhost:8000/api/v1/replay-requests/00000000-0000-0000-0000-000000000000
+```
+
+Replay execution reuses the original delivery, preserves previous `delivery_attempts`, records a normal new attempt, writes audit log entries, and resolves the dead letter only when the replay delivery succeeds.
+
 ## Backend migrations
 
 The backend uses SQLAlchemy 2 async metadata with Alembic's async migration bridge.
-Phase 1C adds `0002_replay_statuses`, a forward migration that expands replay-request terminal statuses for integration-test compatibility while leaving the committed Phase 1B initial migration immutable. Phase 2 adds `0003_webhook_intake_support`, a forward migration that adds webhook receipt request metadata, permits duplicate receipt status, widens stored event types to the API contract, and records accepted event timestamps. Phase 3 adds `0004_routing_schedule`, a forward migration that prevents duplicate delivery schedules for the same event, destination, and routing rule. Phase 4 adds `0005_delivery_execution`, a forward migration that stores delivery execution timestamps/errors, attempt outcomes, retry job claim/completion metadata, a pending retry uniqueness rule, and dead-letter reason metadata.
+Phase 1C adds `0002_replay_statuses`, a forward migration that expands replay-request terminal statuses for integration-test compatibility while leaving the committed Phase 1B initial migration immutable. Phase 2 adds `0003_webhook_intake_support`, a forward migration that adds webhook receipt request metadata, permits duplicate receipt status, widens stored event types to the API contract, and records accepted event timestamps. Phase 3 adds `0004_routing_schedule`, a forward migration that prevents duplicate delivery schedules for the same event, destination, and routing rule. Phase 4 adds `0005_delivery_execution`, a forward migration that stores delivery execution timestamps/errors, attempt outcomes, retry job claim/completion metadata, a pending retry uniqueness rule, and dead-letter reason metadata. Phase 5 adds `0006_replay_workflow`, a forward migration that tracks replay request update/execution/resolution timestamps and expands active replay uniqueness to include `running` requests.
 
 Use the isolated test database on host port `5434` for migration validation:
 
@@ -195,7 +255,7 @@ POSTGRES_PORT=5434 .venv/bin/python -m alembic upgrade head
 POSTGRES_PORT=5434 .venv/bin/python -m alembic downgrade base
 ```
 
-Phase 4 completes explicit delivery execution, retry execution, attempt recording, and dead-letter creation. Background workers, replay execution, authentication behavior, signature verification, and AI execution remain deferred.
+Phase 5 completes explicit human-reviewed replay recovery for dead-lettered deliveries. Background workers, authentication behavior, signature verification, and AI execution remain deferred.
 
 ## Backend seed command
 
@@ -206,7 +266,7 @@ cd backend
 .venv/bin/python -m app.commands.seed
 ```
 
-It creates `admin`, `operator`, and `viewer` roles when absent, plus disabled `github-sandbox` and `stripe-sandbox` integrations when absent. It does not create users, secrets, destinations, routing rules, events, deliveries, retries, replay requests, or AI records.
+It creates `admin`, `operator`, and `viewer` roles when absent, plus disabled `github-sandbox` and `stripe-sandbox` integrations when absent. It does not create users, secrets, destinations, routing rules, events, deliveries, retries, replay requests, audit recovery records, or AI records.
 
 ## PostgreSQL integration tests
 

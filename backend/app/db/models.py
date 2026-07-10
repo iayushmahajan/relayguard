@@ -687,7 +687,7 @@ class ReplayRequest(Base):
             "uq_replay_requests_active_dead_letter_event_id",
             "dead_letter_event_id",
             unique=True,
-            postgresql_where=text("status IN ('pending', 'approved')"),
+            postgresql_where=text("status IN ('pending', 'approved', 'running')"),
         ),
     )
 
@@ -708,7 +708,10 @@ class ReplayRequest(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="pending")
     request_document: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    executed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     dead_letter_event: Mapped[DeadLetterEvent] = relationship(back_populates="replay_requests")
     requested_by_user: Mapped[User | None] = relationship(

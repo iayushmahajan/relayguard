@@ -289,3 +289,96 @@ Optional filters: `resolution_status` and `severity`.
 
 Dead-letter listing never returns payload contents, response bodies, destination configuration, or
 secrets.
+
+## Replay Requests
+
+`POST /api/v1/dead-letters/{dead_letter_id}/replay-requests`
+
+Creates a pending human-reviewed replay request for an open dead letter whose delivery is still
+`dead_lettered`.
+
+```json
+{
+  "reason": "Downstream service has recovered; replay requested after validation.",
+  "requested_by": "system-operator"
+}
+```
+
+Unknown dead letters return `404`. Resolved dead letters, non-dead-lettered deliveries, and
+duplicate active replay requests return `409`. Active replay requests are `pending`, `approved`,
+or `running`.
+
+`GET /api/v1/replay-requests`
+
+Optional filters: `status`, `event_id`, and `dead_letter_id`.
+
+`GET /api/v1/replay-requests/{replay_request_id}`
+
+Both endpoints return safe replay request metadata only:
+
+```json
+{
+  "replay_request_id": "00000000-0000-0000-0000-000000000000",
+  "status": "pending",
+  "event_id": "00000000-0000-0000-0000-000000000000",
+  "delivery_id": "00000000-0000-0000-0000-000000000000",
+  "dead_letter_id": "00000000-0000-0000-0000-000000000000",
+  "reason": "Downstream service has recovered; replay requested after validation.",
+  "requested_by": "system-operator",
+  "approved_by": null,
+  "rejected_by": null,
+  "created_at": "2026-07-10T00:00:00Z",
+  "updated_at": "2026-07-10T00:00:00Z",
+  "executed_at": null,
+  "resolved_at": null
+}
+```
+
+Replay request metadata never returns event payloads, response bodies, destination configuration, or
+secrets.
+
+`POST /api/v1/replay-requests/{replay_request_id}/approve`
+
+```json
+{
+  "approved_by": "system-operator",
+  "note": "Approved after checking destination availability."
+}
+```
+
+Only pending replay requests can be approved. Re-approving approved or terminal requests returns
+`409`.
+
+`POST /api/v1/replay-requests/{replay_request_id}/reject`
+
+```json
+{
+  "rejected_by": "system-operator",
+  "reason": "Payload should not be replayed."
+}
+```
+
+Pending requests and approved requests that have not started running can be rejected. Running and
+terminal requests return `409`.
+
+`POST /api/v1/replay-requests/{replay_request_id}/execute`
+
+Executes only approved replay requests. RelayGuard reuses the original delivery record, makes it
+eligible for the existing deterministic delivery execution path, and records a normal new
+`delivery_attempts` row while preserving previous attempt history.
+
+```json
+{
+  "replay_request_id": "00000000-0000-0000-0000-000000000000",
+  "delivery_id": "00000000-0000-0000-0000-000000000000",
+  "replay_status": "resolved",
+  "delivery_status": "delivered",
+  "attempt_recorded": true,
+  "dead_letter_resolved": true
+}
+```
+
+Successful replay uses replay status `resolved`, marks the original dead letter resolved, and sets
+resolution timestamps. Replay attempts that run but do not resolve the dead letter use replay
+status `executed`; the dead letter remains open. Replay execution does not create a new canonical
+event, does not erase previous attempts, and does not create duplicate dead-letter records.

@@ -52,7 +52,7 @@ def test_alembic_migration_is_applied(session_factory: async_sessionmaker[AsyncS
         async with session_factory() as session:
             return str(await session.scalar(text("SELECT version_num FROM alembic_version")))
 
-    assert asyncio.run(check_revision()) == "0005_delivery_execution"
+    assert asyncio.run(check_revision()) == "0006_replay_workflow"
 
 
 def test_seed_command_is_idempotent(session_factory: async_sessionmaker[AsyncSession]) -> None:
@@ -275,6 +275,30 @@ def test_only_one_active_replay_request_per_dead_letter_event(
                     models.ReplayRequest(
                         dead_letter_event_id=dead_letter_event.id,
                         status="approved",
+                    ),
+                ]
+            )
+            with pytest.raises(IntegrityError):
+                await session.commit()
+
+    asyncio.run(exercise())
+
+
+def test_running_replay_request_blocks_another_active_request(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async def exercise() -> None:
+        async with session_factory() as session:
+            dead_letter_event = await _create_dead_letter_event(session)
+            session.add_all(
+                [
+                    models.ReplayRequest(
+                        dead_letter_event_id=dead_letter_event.id,
+                        status="running",
+                    ),
+                    models.ReplayRequest(
+                        dead_letter_event_id=dead_letter_event.id,
+                        status="pending",
                     ),
                 ]
             )

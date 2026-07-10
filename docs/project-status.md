@@ -64,4 +64,17 @@
 - [x] Added PostgreSQL integration tests for success, retryable failure, terminal failure, timeout, retry execution, retry exhaustion, and safe metadata behavior
 - [x] Preserved database-free `make check` behavior
 - [x] Validated PostgreSQL integration checks against isolated host port `5434`
-- [ ] Background workers, replay execution, authentication behavior, signature verification, and AI execution not started
+- [x] Fixed stale pending retry job cleanup after terminal delivery outcomes
+- [ ] Background workers, authentication behavior, signature verification, and AI execution not started
+
+## Phase 5 - Replay and recovery workflow
+- [x] Added `0006_replay_workflow` forward migration with downgrade
+- [x] Added replay request creation, listing, and lookup endpoints
+- [x] Added replay approval, rejection, and explicit execution endpoints
+- [x] Added service-layer replay workflow and safe audit logging
+- [x] Reused deterministic Phase 4 delivery execution for replay attempts
+- [x] Preserved previous delivery attempt history during replay
+- [x] Added PostgreSQL integration tests for replay creation, approval, rejection, execution, invalid transitions, idempotency, metadata safety, and audit logging
+- [x] Preserved database-free `make check` behavior
+- [x] Validated PostgreSQL integration checks against isolated host port `5434`
+- [ ] Background workers, authentication behavior, signature verification, frontend recovery UI, and AI execution not started

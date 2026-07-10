@@ -157,3 +157,32 @@
 - **Rationale:** Explicit API-driven execution proves delivery, retry, and dead-letter state transitions without introducing Celery, Redis, Kafka, cloud services, or a long-running worker before those are specified.
 - **Date:** 2026-07-10
 - **Stale retry note:** When a delivery reaches a terminal no-retry-needed status through direct execution, pending retry jobs for that delivery are cancelled. If a pending retry job is executed after its delivery has already become terminal, the retry job is cancelled before RelayGuard returns `409` so it is not left stuck as claimed.
+
+## Entry 26
+- **Decision:** Phase 5 uses a human-reviewed replay workflow with explicit create, approve, reject, and execute API operations.
+- **Rationale:** Dead-letter recovery should be deliberate and auditable. Replay requests keep operator intent separate from delivery execution while preserving deterministic service behavior.
+- **Date:** 2026-07-10
+- **Alternatives:** Automatic replay, background workers, external queues, and AI-selected recovery actions were rejected for Phase 5.
+
+## Entry 27
+- **Decision:** Use replay request statuses `pending`, `approved`, `rejected`, `running`, `resolved`, and `executed`.
+- **Rationale:** The existing check constraint already supports these statuses. `resolved` means replay succeeded and the dead letter is resolved. `executed` means an approved replay attempt ran but did not resolve the dead letter.
+- **Date:** 2026-07-10
+- **Details:** Invalid transitions return `409`; pending requests cannot execute, rejected requests cannot execute, and terminal requests cannot be approved, rejected, or executed again.
+
+## Entry 28
+- **Decision:** Reuse the original dead-lettered delivery for replay execution.
+- **Rationale:** Reusing the delivery preserves the original event, destination, routing context, and prior attempt history while allowing Phase 4 delivery execution to record the replay as a normal new attempt.
+- **Date:** 2026-07-10
+- **Details:** Replay temporarily makes the original delivery due and executable, then calls the existing delivery execution path. Successful replay resolves the existing dead-letter row; failed replay relies on existing retry/dead-letter idempotency and does not create duplicate dead letters.
+
+## Entry 29
+- **Decision:** Add `0006_replay_workflow` for replay timestamps and active replay uniqueness.
+- **Rationale:** Phase 5 needs safe replay request metadata for update, execution, and resolution times, and active replay uniqueness must include `running` requests to prevent a second active request during execution.
+- **Date:** 2026-07-10
+- **Downgrade note:** The downgrade restores the Phase 4 active replay uniqueness rule and removes only the Phase 5 replay timestamp columns.
+
+## Entry 30
+- **Decision:** Write safe audit log entries for replay lifecycle actions.
+- **Rationale:** Recovery actions need an audit trail even before authentication exists. Audit documents contain IDs, statuses, correlation IDs where available, and operator-provided actor strings, but never payloads, response bodies, credentials, or secrets.
+- **Date:** 2026-07-10

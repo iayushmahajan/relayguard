@@ -1,4 +1,4 @@
-# RelayGuard Phase 4 Architecture
+# RelayGuard Phase 5 Architecture
 
 ```mermaid
 flowchart LR
@@ -10,16 +10,19 @@ flowchart LR
   B --> S[Service Layer\nwebhook_intake + events]
   S --> R[Routing + Scheduling\nDestinations, Rules, Deliveries]
   R --> E[Delivery Execution\nAttempts, Retries, Dead Letters]
+  E --> P[Replay Recovery\nReview, Audit, Explicit Replay]
   S --> D[(PostgreSQL\nNormalized persistence schema)]
   R --> D
   E --> D
+  P --> D
+  P --> E
   E --> X[Downstream HTTP Endpoint\nExplicit POST execution]
   M[Alembic Async Migrations] --> D
   CI[GitHub Actions CI\nNode 24.x + Python 3.10/3.13] --> F
   CI --> B
 ```
 
-PostgreSQL remains unconnected during startup and normal unit tests. Phase 1B added SQLAlchemy ORM metadata and an immutable initial Alembic migration for the normalized persistence foundation. Phase 1C adds idempotent seeding, PostgreSQL-only integration validation against the isolated test database on host port `5434`, and a forward `0002` migration that expands replay-request terminal statuses. Phase 2 adds `0003_webhook_intake_support` for receipt request metadata, duplicate receipt status, event-type length alignment, and accepted event timestamps. Phase 3 adds `0004_routing_schedule` to enforce idempotent delivery scheduling for each event, destination, and routing rule. Phase 4 adds `0005_delivery_execution` to store delivery execution timestamps/errors, attempt outcomes, retry job claim/completion metadata, pending retry uniqueness, and dead-letter reason metadata.
+PostgreSQL remains unconnected during startup and normal unit tests. Phase 1B added SQLAlchemy ORM metadata and an immutable initial Alembic migration for the normalized persistence foundation. Phase 1C adds idempotent seeding, PostgreSQL-only integration validation against the isolated test database on host port `5434`, and a forward `0002` migration that expands replay-request terminal statuses. Phase 2 adds `0003_webhook_intake_support` for receipt request metadata, duplicate receipt status, event-type length alignment, and accepted event timestamps. Phase 3 adds `0004_routing_schedule` to enforce idempotent delivery scheduling for each event, destination, and routing rule. Phase 4 adds `0005_delivery_execution` to store delivery execution timestamps/errors, attempt outcomes, retry job claim/completion metadata, pending retry uniqueness, and dead-letter reason metadata. Phase 5 adds `0006_replay_workflow` to store replay update/execution/resolution timestamps and to treat `running` replay requests as active for database-backed uniqueness.
 
 The schema uses UUID primary keys, UTC-aware timestamp columns, string status columns with check constraints, JSONB only for payload/configuration/schema/audit documents, and PostgreSQL partial unique indexes where domain rules require them.
 
@@ -56,3 +59,15 @@ Normal health/startup behavior and `make check` remain database-free. Replay exe
 6. Non-retryable HTTP client-side failures and exhausted retryable failures move the delivery to `dead_lettered`. The `dead_letter_events.delivery_id` unique rule guarantees exactly one dead-letter record per delivery.
 7. `POST /api/v1/retry-jobs/{retry_job_id}/execute` claims one due pending retry job, reuses the same delivery execution path, and marks the retry job completed when execution runs.
 8. Phase 4 has no background worker or external queue. Execution happens only through explicit API requests, which keeps retry/dead-letter decisions deterministic and testable.
+
+## Phase 5 replay and recovery flow
+
+1. `POST /api/v1/dead-letters/{dead_letter_id}/replay-requests` creates a pending replay request only for an open dead letter whose delivery is still `dead_lettered`.
+2. The database-backed active replay uniqueness rule permits only one `pending`, `approved`, or `running` replay request for the same dead letter.
+3. Operators explicitly approve or reject replay requests. Approval moves `pending` to `approved`; rejection moves `pending` or unstarted `approved` requests to `rejected`.
+4. `POST /api/v1/replay-requests/{replay_request_id}/execute` only runs approved requests. The service marks the request `running`, reopens the original dead-lettered delivery as a due failed delivery, cancels stale pending retry jobs, and calls the existing delivery execution service.
+5. Replay execution sends the same stored event payload to the original destination through the Phase 4 delivery path. It records a normal new `delivery_attempts` row and preserves all earlier attempts.
+6. Successful replay marks the delivery `delivered`, marks the replay request `resolved`, resolves the original dead-letter record, and writes execution/resolution audit entries.
+7. Replay attempts that run but still fail mark the replay request `executed`, leave the dead letter open, and rely on Phase 4 idempotency to avoid duplicate retry jobs or duplicate dead-letter rows.
+8. Create, approve, reject, execute, resolved, and unresolved execution outcomes write safe `audit_logs` entries without payloads, response bodies, credentials, or secrets.
+9. Phase 5 keeps replay explicit and human-reviewed. It adds no background worker, external queue, authentication behavior, signature verification, AI execution, or frontend recovery UI.
