@@ -74,16 +74,6 @@ async def ingest_webhook(
     raw_body = await request.body()
     metadata = _build_request_metadata(request, raw_body)
 
-    if not _is_json_content_type(metadata.content_type):
-        receipt = await _create_rejected_receipt(
-            session=session,
-            integration_id=integration.id,
-            metadata=metadata,
-            reason="unsupported content type",
-        )
-        await session.commit()
-        return _rejected_result(415, "unsupported content type", receipt.id)
-
     if not integration.enabled or integration.status != "active":
         receipt = await _create_rejected_receipt(
             session=session,
@@ -93,6 +83,16 @@ async def ingest_webhook(
         )
         await session.commit()
         return _rejected_result(409, "integration disabled", receipt.id)
+
+    if not _is_json_content_type(metadata.content_type):
+        receipt = await _create_rejected_receipt(
+            session=session,
+            integration_id=integration.id,
+            metadata=metadata,
+            reason="unsupported content type",
+        )
+        await session.commit()
+        return _rejected_result(415, "unsupported content type", receipt.id)
 
     try:
         document = json.loads(raw_body)

@@ -82,6 +82,7 @@ def test_valid_webhook_creates_initial_lifecycle(
         async with session_factory() as session:
             receipt = await session.get(models.WebhookReceipt, uuid.UUID(data["receipt_id"]))
             event = await session.get(models.Event, uuid.UUID(data["event_id"]))
+            receipt_count = await _count(session, models.WebhookReceipt)
             payload_count = await _count(session, models.EventPayload)
             transition_count = await _count(session, models.EventStateTransition)
             transition = await session.scalar(select(models.EventStateTransition))
@@ -89,6 +90,7 @@ def test_valid_webhook_creates_initial_lifecycle(
 
         assert receipt is not None
         assert receipt.status == "accepted"
+        assert receipt_count == 1
         assert receipt.request_method == "POST"
         assert receipt.request_path == f"/api/v1/integrations/{integration.slug}/webhooks"
         assert receipt.content_type == "application/json"
@@ -216,6 +218,42 @@ def test_disabled_integration_creates_rejected_receipt_only(
             assert receipt is not None
             assert receipt.status == "rejected"
             assert receipt.rejection_reason == "integration disabled"
+            assert await _count(session, models.Event) == 0
+            assert await _count(session, models.EventPayload) == 0
+            assert await _count(session, models.EventStateTransition) == 0
+
+    asyncio.run(exercise())
+
+
+def test_disabled_integration_rejects_before_content_type_validation(
+    app: FastAPI,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async def exercise() -> None:
+        integration = await _create_integration(session_factory, active=False)
+        raw_body = b"disabled plain text body"
+        response = await _post_webhook(
+            app,
+            integration.slug,
+            raw_body,
+            content_type="text/plain",
+        )
+
+        assert response.status_code == 409
+        _assert_correlation_id(response)
+        assert response.json()["detail"] == "integration disabled"
+        async with session_factory() as session:
+            receipt = await session.scalar(select(models.WebhookReceipt))
+            assert receipt is not None
+            assert receipt.status == "rejected"
+            assert receipt.rejection_reason == "integration disabled"
+            assert receipt.content_type == "text/plain"
+            assert receipt.body_size_bytes == len(raw_body)
+            assert receipt.request_method == "POST"
+            assert receipt.request_path == f"/api/v1/integrations/{integration.slug}/webhooks"
+            assert receipt.correlation_id is not None
+            assert receipt.raw_body_hash == hashlib.sha256(raw_body).hexdigest()
+            assert await _count(session, models.WebhookReceipt) == 1
             assert await _count(session, models.Event) == 0
             assert await _count(session, models.EventPayload) == 0
             assert await _count(session, models.EventStateTransition) == 0
