@@ -5,25 +5,25 @@ type StateProps = {
 
 export function EmptyState({ title, message }: StateProps) {
   return (
-    <div className="rounded-lg border border-dashed border-stone-600 bg-stone-900/35 p-5 text-sm">
-      <p className="font-semibold text-stone-100">{title}</p>
-      <p className="mt-1 text-stone-400">{message}</p>
+    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-5 text-sm">
+      <p className="font-semibold text-slate-900">{title}</p>
+      <p className="mt-1 text-slate-500">{message}</p>
     </div>
   );
 }
 
 export function ErrorPanel({ title, message }: StateProps) {
   return (
-    <div className="rounded-lg border border-rose-400/35 bg-rose-950/35 p-4 text-sm text-rose-100">
+    <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
       <p className="font-semibold">{title}</p>
-      <p className="mt-1 text-rose-100/75">{message}</p>
+      <p className="mt-1 text-rose-700">{message}</p>
     </div>
   );
 }
 
 export function LoadingState({ label }: { label: string }) {
   return (
-    <div className="rounded-lg border border-stone-700 bg-stone-900/45 p-4 text-sm text-stone-300">
+    <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500 shadow-sm">
       {label}
     </div>
   );

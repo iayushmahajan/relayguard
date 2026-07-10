@@ -64,18 +64,18 @@ export function EventTester({ disabled, onSubmit }: EventTesterProps) {
     <form className="grid gap-3" onSubmit={handleSubmit}>
       <div className="grid gap-3 md:grid-cols-2">
         <label className="grid gap-1 text-sm">
-          <span className="font-medium text-stone-200">Event type</span>
+          <span className="font-medium text-slate-700">Event type</span>
           <input
-            className="rounded-md border border-stone-700 bg-stone-950 px-3 py-2 text-stone-100 outline-none focus:border-cyan-300"
+            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
             value={eventType}
             onChange={(event) => setEventType(event.target.value)}
             required
           />
         </label>
         <label className="grid gap-1 text-sm">
-          <span className="font-medium text-stone-200">Deduplication key</span>
+          <span className="font-medium text-slate-700">Deduplication key</span>
           <input
-            className="rounded-md border border-stone-700 bg-stone-950 px-3 py-2 text-stone-100 outline-none focus:border-cyan-300"
+            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
             value={deduplicationKey}
             onChange={(event) => setDeduplicationKey(event.target.value)}
             required
@@ -83,25 +83,25 @@ export function EventTester({ disabled, onSubmit }: EventTesterProps) {
         </label>
       </div>
       <label className="grid gap-1 text-sm">
-        <span className="font-medium text-stone-200">Source event ID</span>
+        <span className="font-medium text-slate-700">Source event ID</span>
         <input
-          className="rounded-md border border-stone-700 bg-stone-950 px-3 py-2 text-stone-100 outline-none focus:border-cyan-300"
+          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
           value={sourceEventId}
           onChange={(event) => setSourceEventId(event.target.value)}
           placeholder="optional-provider-event-id"
         />
       </label>
       <label className="grid gap-1 text-sm">
-        <span className="font-medium text-stone-200">Payload JSON</span>
+        <span className="font-medium text-slate-700">Payload JSON</span>
         <textarea
-          className="min-h-36 resize-y rounded-md border border-stone-700 bg-stone-950 px-3 py-2 font-mono text-sm text-stone-100 outline-none focus:border-cyan-300"
+          className="min-h-56 resize-y rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 shadow-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
           value={payloadText}
           onChange={(event) => setPayloadText(event.target.value)}
         />
       </label>
-      {error ? <p className="text-sm text-rose-200">{error}</p> : null}
+      {error ? <p className="text-sm text-rose-700">{error}</p> : null}
       <button
-        className="rounded-md bg-cyan-300 px-4 py-2 text-sm font-semibold text-stone-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:bg-stone-700 disabled:text-stone-400"
+        className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
         disabled={disabled || submitting}
         type="submit"
       >

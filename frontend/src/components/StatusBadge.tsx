@@ -3,30 +3,29 @@ type StatusBadgeProps = {
 };
 
 const STATUS_STYLES: Record<string, string> = {
-  active: "border-emerald-300/50 bg-emerald-400/15 text-emerald-100",
-  accepted: "border-sky-300/50 bg-sky-400/15 text-sky-100",
-  approved: "border-sky-300/50 bg-sky-400/15 text-sky-100",
-  cancelled: "border-zinc-400/50 bg-zinc-500/15 text-zinc-100",
-  dead_lettered: "border-rose-300/50 bg-rose-400/15 text-rose-100",
-  delivered: "border-emerald-300/50 bg-emerald-400/15 text-emerald-100",
-  disabled: "border-zinc-400/50 bg-zinc-500/15 text-zinc-100",
-  duplicate: "border-amber-300/50 bg-amber-400/15 text-amber-100",
-  executed: "border-amber-300/50 bg-amber-400/15 text-amber-100",
-  failed: "border-rose-300/50 bg-rose-400/15 text-rose-100",
-  open: "border-rose-300/50 bg-rose-400/15 text-rose-100",
-  pending: "border-amber-300/50 bg-amber-400/15 text-amber-100",
-  processing: "border-violet-300/50 bg-violet-400/15 text-violet-100",
-  rejected: "border-rose-300/50 bg-rose-400/15 text-rose-100",
-  resolved: "border-emerald-300/50 bg-emerald-400/15 text-emerald-100",
-  running: "border-violet-300/50 bg-violet-400/15 text-violet-100",
-  scheduled: "border-cyan-300/50 bg-cyan-400/15 text-cyan-100",
-  succeeded: "border-emerald-300/50 bg-emerald-400/15 text-emerald-100",
+  active: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  accepted: "border-sky-200 bg-sky-50 text-sky-700",
+  approved: "border-sky-200 bg-sky-50 text-sky-700",
+  cancelled: "border-slate-200 bg-slate-100 text-slate-600",
+  dead_lettered: "border-rose-200 bg-rose-50 text-rose-700",
+  delivered: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  disabled: "border-slate-200 bg-slate-100 text-slate-600",
+  duplicate: "border-amber-200 bg-amber-50 text-amber-700",
+  executed: "border-amber-200 bg-amber-50 text-amber-700",
+  failed: "border-rose-200 bg-rose-50 text-rose-700",
+  open: "border-rose-200 bg-rose-50 text-rose-700",
+  pending: "border-amber-200 bg-amber-50 text-amber-700",
+  processing: "border-indigo-200 bg-indigo-50 text-indigo-700",
+  rejected: "border-rose-200 bg-rose-50 text-rose-700",
+  resolved: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  running: "border-indigo-200 bg-indigo-50 text-indigo-700",
+  scheduled: "border-cyan-200 bg-cyan-50 text-cyan-700",
+  succeeded: "border-emerald-200 bg-emerald-50 text-emerald-700",
 };
 
 export function StatusBadge({ status }: StatusBadgeProps) {
   const style =
-    STATUS_STYLES[status] ??
-    "border-stone-400/50 bg-stone-500/15 text-stone-100";
+    STATUS_STYLES[status] ?? "border-slate-200 bg-slate-100 text-slate-600";
 
   return (
     <span

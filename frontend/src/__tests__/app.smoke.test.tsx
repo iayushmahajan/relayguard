@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -17,12 +23,59 @@ describe("RelayGuard dashboard", () => {
     render(<App />);
 
     expect(
-      await screen.findByRole("heading", {
-        name: /reliability lifecycle command center/i,
-      }),
+      await screen.findByRole("heading", { name: /^RelayGuard$/i }),
     ).toBeInTheDocument();
     expect(screen.getAllByText("stripe-sandbox").length).toBeGreaterThan(0);
-    expect(screen.getByText(/How to demo locally/i)).toBeInTheDocument();
+    expect(screen.getByText(/Quick actions/i)).toBeInTheDocument();
+  });
+
+  it("renders fixed sidebar navigation", async () => {
+    vi.stubGlobal("fetch", vi.fn(mockDashboardFetch));
+
+    render(<App />);
+
+    const navigation = await screen.findByRole("navigation", {
+      name: /Dashboard sections/i,
+    });
+    expect(navigation.closest("aside")).toHaveClass("fixed");
+    expect(
+      within(navigation).getByRole("button", { name: "Overview" }),
+    ).toBeInTheDocument();
+    expect(
+      within(navigation).getByRole("button", { name: "Recovery" }),
+    ).toBeInTheDocument();
+  });
+
+  it("changes visible page content when sidebar items are clicked", async () => {
+    vi.stubGlobal("fetch", vi.fn(mockDashboardFetch));
+
+    render(<App />);
+
+    const navigation = await screen.findByRole("navigation", {
+      name: /Dashboard sections/i,
+    });
+    await userEvent.click(
+      within(navigation).getByRole("button", { name: "Route Setup" }),
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Route Setup" }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Create destination").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Quick actions")).not.toBeInTheDocument();
+  });
+
+  it("keeps overview compact instead of rendering every workflow section", async () => {
+    vi.stubGlobal("fetch", vi.fn(mockDashboardFetch));
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Overview" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Recent activity")).toBeInTheDocument();
+    expect(screen.queryByText("Payload JSON")).not.toBeInTheDocument();
+    expect(screen.queryByText("Delivery list")).not.toBeInTheDocument();
   });
 
   it("shows a backend unavailable state without crashing", async () => {
