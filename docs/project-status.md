@@ -29,7 +29,7 @@
 - [x] Phase 1C Makefile database targets added
 - [x] Phase 1C backend PostgreSQL integration CI job added
 - [x] Phase 1C replay-request terminal status compatibility migration added
-- [ ] Runtime webhook, retry, replay, authentication, and AI execution behavior not started
+- [ ] Replay, authentication, signature verification, and AI execution behavior not started
 
 ## Phase 2 - Deterministic webhook intake and canonical event lifecycle
 - [x] Added `0003_webhook_intake_support` forward migration with downgrade
@@ -40,7 +40,7 @@
 - [x] Added PostgreSQL integration tests for accepted, duplicate, rejected, invalid, unknown, and lookup behavior
 - [x] Preserved database-free `make check` behavior
 - [x] Validated PostgreSQL integration checks against isolated host port `5434`
-- [ ] Delivery execution, retry execution, replay execution, authentication behavior, signature verification, and AI execution not started
+- [ ] Replay execution, authentication behavior, signature verification, and AI execution not started
 
 ## Phase 3 - Deterministic routing and delivery scheduling
 - [x] Added destination management endpoints
@@ -51,4 +51,17 @@
 - [x] Added service-layer routing and scheduling orchestration
 - [x] Added PostgreSQL integration tests for destination, routing, scheduling, idempotency, matching, and delivery listing behavior
 - [x] Preserved database-free `make check` behavior
-- [ ] HTTP delivery execution, retry execution, replay execution, authentication behavior, signature verification, and AI execution not started
+- [ ] Replay execution, authentication behavior, signature verification, and AI execution not started
+
+## Phase 4 - HTTP delivery execution and retry attempt recording
+- [x] Added `0005_delivery_execution` forward migration with downgrade
+- [x] Added explicit delivery execution endpoint
+- [x] Added retry job execution endpoint
+- [x] Added safe delivery attempt, retry job, and dead-letter metadata endpoints
+- [x] Added deterministic retry policy and retryable/non-retryable classification
+- [x] Added service-layer HTTP execution, retry, and dead-letter orchestration
+- [x] Added injectable HTTP client pattern for integration tests without external internet
+- [x] Added PostgreSQL integration tests for success, retryable failure, terminal failure, timeout, retry execution, retry exhaustion, and safe metadata behavior
+- [x] Preserved database-free `make check` behavior
+- [x] Validated PostgreSQL integration checks against isolated host port `5434`
+- [ ] Background workers, replay execution, authentication behavior, signature verification, and AI execution not started

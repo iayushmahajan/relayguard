@@ -128,3 +128,31 @@
 - **Rationale:** Separating durable scheduling from network execution keeps the routing foundation reviewable and avoids introducing worker, retry, secret, or signature behavior before those phases are specified.
 - **Date:** 2026-07-10
 - **Details:** Accepted events remain `accepted` after scheduling in Phase 3. Delivery execution and event status advancement are deferred to a later phase.
+
+## Entry 21
+- **Decision:** Add `0005_delivery_execution` for Phase 4 execution metadata.
+- **Rationale:** The existing tables represented delivery attempts, retry jobs, and dead letters, but they lacked the status values and safe metadata required to execute HTTP deliveries, record retryable outcomes, claim/complete retry jobs, and expose dead-letter reason fields. The migration also adds a partial unique index for one pending retry job per delivery/run target.
+- **Date:** 2026-07-10
+- **Downgrade note:** The downgrade removes only Phase 4 columns/indexes/check expansions and normalizes new status values back to Phase 3-compatible values before restoring older checks.
+
+## Entry 22
+- **Decision:** Use a deterministic retry policy with default max attempts `3` and default backoff of 60 seconds after attempt 1 and 300 seconds after attempt 2.
+- **Rationale:** Fixed retry timing is easy to test and audit. Destination configuration may override `timeout_seconds`, `max_attempts`, and `retry_backoff_seconds`; malformed values fall back to defaults with safe warnings.
+- **Date:** 2026-07-10
+- **Alternatives:** Randomized jitter, external queue scheduling, and AI-selected retry timing were rejected for Phase 4.
+
+## Entry 23
+- **Decision:** Classify retryable failures as timeout, network/connect errors, and HTTP `429`, `500`, `502`, `503`, or `504`; classify clear client-side HTTP failures as terminal.
+- **Rationale:** The classification keeps transient downstream unavailability separate from rejected requests that should not be replayed automatically.
+- **Date:** 2026-07-10
+
+## Entry 24
+- **Decision:** Create exactly one dead-letter record per terminal delivery.
+- **Rationale:** The existing one-to-one `dead_letter_events.delivery_id` uniqueness rule, combined with conflict-safe inserts, prevents repeated execution or retry exhaustion paths from creating duplicate dead-letter records.
+- **Date:** 2026-07-10
+- **Details:** Exhausted retryable failures use critical severity, non-retryable delivery rejections use high severity, and other terminal failures use medium severity.
+
+## Entry 25
+- **Decision:** Phase 4 exposes explicit execution APIs instead of adding a background worker or external queue.
+- **Rationale:** Explicit API-driven execution proves delivery, retry, and dead-letter state transitions without introducing Celery, Redis, Kafka, cloud services, or a long-running worker before those are specified.
+- **Date:** 2026-07-10

@@ -456,7 +456,8 @@ class EventDelivery(Base):
     __table_args__ = (
         CheckConstraint(
             "status IN ("
-            "'pending', 'scheduled', 'in_progress', 'succeeded', 'failed', 'dead_lettered'"
+            "'pending', 'scheduled', 'in_progress', 'delivered', 'succeeded', "
+            "'failed', 'dead_lettered', 'cancelled'"
             ")",
             name="event_delivery_status",
         ),
@@ -488,6 +489,9 @@ class EventDelivery(Base):
     next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error_code: Mapped[str | None] = mapped_column(String(100))
+    last_error_message: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()
 
@@ -515,6 +519,10 @@ class DeliveryAttempt(Base):
     __tablename__ = "delivery_attempts"
     __table_args__ = (
         CheckConstraint("status IN ('succeeded', 'failed')", name="delivery_attempt_status"),
+        CheckConstraint(
+            "outcome IN ('succeeded', 'failed', 'timed_out')",
+            name="delivery_attempt_outcome",
+        ),
         UniqueConstraint(
             "delivery_id",
             "attempt_number",
@@ -530,6 +538,7 @@ class DeliveryAttempt(Base):
     )
     attempt_number: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
+    outcome: Mapped[str] = mapped_column(String(32), nullable=False, server_default="failed")
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -539,7 +548,10 @@ class DeliveryAttempt(Base):
     request_headers: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     response_status_code: Mapped[int | None] = mapped_column(Integer)
     response_headers: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    error_code: Mapped[str | None] = mapped_column(String(100))
     error_message: Mapped[str | None] = mapped_column(Text)
+    is_retryable: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    created_at: Mapped[datetime] = created_at_column()
 
     delivery: Mapped[EventDelivery] = relationship(back_populates="attempts")
 
@@ -550,8 +562,17 @@ class RetryJob(Base):
     __tablename__ = "retry_jobs"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('pending', 'running', 'succeeded', 'cancelled', 'failed')",
+            "status IN ("
+            "'pending', 'claimed', 'completed', 'cancelled', 'running', 'succeeded', 'failed'"
+            ")",
             name="retry_job_status",
+        ),
+        Index(
+            "uq_retry_jobs_pending_delivery_run_at",
+            "delivery_id",
+            "run_at",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
         ),
         Index("ix_retry_jobs_status_run_at", "status", "run_at"),
     )
@@ -566,7 +587,10 @@ class RetryJob(Base):
     run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
 
     delivery: Mapped[EventDelivery] = relationship(back_populates="retry_jobs")
 
@@ -603,7 +627,14 @@ class DeadLetterEvent(Base):
         server_default=func.now(),
     )
     reason: Mapped[str] = mapped_column(Text, nullable=False)
+    reason_code: Mapped[str] = mapped_column(
+        String(100), nullable=False, server_default="delivery_failed"
+    )
+    reason_message: Mapped[str] = mapped_column(Text, nullable=False)
     context_document: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
 
     delivery: Mapped[EventDelivery] = relationship(back_populates="dead_letter_event")
     replay_requests: Mapped[list[ReplayRequest]] = relationship(

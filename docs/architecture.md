@@ -1,4 +1,4 @@
-# RelayGuard Phase 3 Architecture
+# RelayGuard Phase 4 Architecture
 
 ```mermaid
 flowchart LR
@@ -9,14 +9,17 @@ flowchart LR
   B --> L[structlog JSON Logs\ncontextvars correlation_id]
   B --> S[Service Layer\nwebhook_intake + events]
   S --> R[Routing + Scheduling\nDestinations, Rules, Deliveries]
+  R --> E[Delivery Execution\nAttempts, Retries, Dead Letters]
   S --> D[(PostgreSQL\nNormalized persistence schema)]
   R --> D
+  E --> D
+  E --> X[Downstream HTTP Endpoint\nExplicit POST execution]
   M[Alembic Async Migrations] --> D
   CI[GitHub Actions CI\nNode 24.x + Python 3.10/3.13] --> F
   CI --> B
 ```
 
-PostgreSQL remains unconnected during startup and normal unit tests. Phase 1B added SQLAlchemy ORM metadata and an immutable initial Alembic migration for the normalized persistence foundation. Phase 1C adds idempotent seeding, PostgreSQL-only integration validation against the isolated test database on host port `5434`, and a forward `0002` migration that expands replay-request terminal statuses. Phase 2 adds `0003_webhook_intake_support` for receipt request metadata, duplicate receipt status, event-type length alignment, and accepted event timestamps. Phase 3 adds `0004_routing_schedule` to enforce idempotent delivery scheduling for each event, destination, and routing rule.
+PostgreSQL remains unconnected during startup and normal unit tests. Phase 1B added SQLAlchemy ORM metadata and an immutable initial Alembic migration for the normalized persistence foundation. Phase 1C adds idempotent seeding, PostgreSQL-only integration validation against the isolated test database on host port `5434`, and a forward `0002` migration that expands replay-request terminal statuses. Phase 2 adds `0003_webhook_intake_support` for receipt request metadata, duplicate receipt status, event-type length alignment, and accepted event timestamps. Phase 3 adds `0004_routing_schedule` to enforce idempotent delivery scheduling for each event, destination, and routing rule. Phase 4 adds `0005_delivery_execution` to store delivery execution timestamps/errors, attempt outcomes, retry job claim/completion metadata, pending retry uniqueness, and dead-letter reason metadata.
 
 The schema uses UUID primary keys, UTC-aware timestamp columns, string status columns with check constraints, JSONB only for payload/configuration/schema/audit documents, and PostgreSQL partial unique indexes where domain rules require them.
 
@@ -31,7 +34,7 @@ The schema uses UUID primary keys, UTC-aware timestamp columns, string status co
 7. Duplicate inserts update the new receipt to `duplicate` and return the existing event ID without creating another event, payload, or state transition.
 8. `GET /api/v1/events/{event_id}` returns safe metadata only and never returns payload contents.
 
-Normal health/startup behavior and `make check` remain database-free. Delivery execution, retry execution, replay execution, authentication behavior, signature verification, and AI execution remain deferred.
+Normal health/startup behavior and `make check` remain database-free. Replay execution, authentication behavior, signature verification, and AI execution remain deferred.
 
 ## Phase 3 routing and scheduling flow
 
@@ -41,4 +44,15 @@ Normal health/startup behavior and `make check` remain database-free. Delivery e
 4. A route matches only when its configured `event_type` exactly equals the canonical event's `event_type`. Disabled rules, disabled destinations, and non-matching rules are ignored.
 5. For each matched active route, RelayGuard inserts one `event_deliveries` row with status `scheduled`, `attempt_count` zero, and `next_attempt_at` set to the current UTC timestamp.
 6. The Phase 3 uniqueness constraint prevents duplicate delivery rows for the same event, destination, and routing rule. Repeated scheduling calls report existing matched deliveries without creating duplicates.
-7. Phase 3 keeps canonical events in `accepted` status while delivery records wait for a future execution phase. No delivery attempts, retry jobs, dead letters, replay requests, or AI records are created.
+7. Phase 3 keeps canonical events in `accepted` status while delivery records wait for explicit execution. No delivery attempts, retry jobs, dead letters, replay requests, or AI records are created during scheduling.
+
+## Phase 4 delivery execution and retry flow
+
+1. `POST /api/v1/deliveries/{delivery_id}/execute` loads one due delivery with status `scheduled` or `failed`, its destination, and the stored canonical event payload.
+2. RelayGuard sends one HTTP `POST` with `Content-Type: application/json` and the stored payload document. It does not add signatures, authentication headers, webhook secrets, or response-body logging in Phase 4.
+3. Every execution attempt creates one `delivery_attempts` row with a monotonically increasing attempt number, safe outcome metadata, status code when available, safe error code/message, and retryability classification.
+4. HTTP `2xx` marks the delivery `delivered`, sets `delivered_at` and `last_attempt_at`, clears retry state, and advances the event to `delivered` when all deliveries for the event are delivered.
+5. Retryable failures are timeout, network/connect errors, and HTTP `429`, `500`, `502`, `503`, or `504`. The delivery moves to `failed`, `next_attempt_at` is set using deterministic backoff, and one pending `retry_jobs` row is created for the delivery/run target.
+6. Non-retryable HTTP client-side failures and exhausted retryable failures move the delivery to `dead_lettered`. The `dead_letter_events.delivery_id` unique rule guarantees exactly one dead-letter record per delivery.
+7. `POST /api/v1/retry-jobs/{retry_job_id}/execute` claims one due pending retry job, reuses the same delivery execution path, and marks the retry job completed when execution runs.
+8. Phase 4 has no background worker or external queue. Execution happens only through explicit API requests, which keeps retry/dead-letter decisions deterministic and testable.

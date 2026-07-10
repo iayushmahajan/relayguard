@@ -2,6 +2,7 @@ import asyncio
 import os
 import uuid
 from collections.abc import Iterator
+from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy import delete, func, select, text
@@ -51,7 +52,7 @@ def test_alembic_migration_is_applied(session_factory: async_sessionmaker[AsyncS
         async with session_factory() as session:
             return str(await session.scalar(text("SELECT version_num FROM alembic_version")))
 
-    assert asyncio.run(check_revision()) == "0004_routing_schedule"
+    assert asyncio.run(check_revision()) == "0005_delivery_execution"
 
 
 def test_seed_command_is_idempotent(session_factory: async_sessionmaker[AsyncSession]) -> None:
@@ -240,6 +241,25 @@ def test_event_delivery_route_is_unique(
     asyncio.run(exercise())
 
 
+def test_pending_retry_job_delivery_run_target_is_unique(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async def exercise() -> None:
+        async with session_factory() as session:
+            delivery = await _create_delivery(session)
+            run_at = datetime.now(timezone.utc)
+            session.add_all(
+                [
+                    models.RetryJob(delivery_id=delivery.id, status="pending", run_at=run_at),
+                    models.RetryJob(delivery_id=delivery.id, status="pending", run_at=run_at),
+                ]
+            )
+            with pytest.raises(IntegrityError):
+                await session.commit()
+
+    asyncio.run(exercise())
+
+
 def test_only_one_active_replay_request_per_dead_letter_event(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
@@ -370,7 +390,12 @@ async def _create_event_route(
 
 async def _create_dead_letter_event(session: AsyncSession) -> models.DeadLetterEvent:
     delivery = await _create_delivery(session)
-    dead_letter_event = models.DeadLetterEvent(delivery_id=delivery.id, reason="failed")
+    dead_letter_event = models.DeadLetterEvent(
+        delivery_id=delivery.id,
+        reason="failed",
+        reason_code="delivery_failed",
+        reason_message="failed",
+    )
     session.add(dead_letter_event)
     await session.flush()
     return dead_letter_event

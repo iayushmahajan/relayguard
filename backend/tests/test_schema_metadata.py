@@ -10,6 +10,7 @@ INITIAL_MIGRATION_PATH = "alembic/versions/0001_initial_schema_created_relayguar
 REPLAY_STATUS_MIGRATION_PATH = "alembic/versions/0002_replay_statuses.py"
 WEBHOOK_INTAKE_MIGRATION_PATH = "alembic/versions/0003_webhook_intake_support.py"
 ROUTING_SCHEDULE_MIGRATION_PATH = "alembic/versions/0004_routing_schedule.py"
+DELIVERY_EXECUTION_MIGRATION_PATH = "alembic/versions/0005_delivery_execution.py"
 
 REQUIRED_TABLES = {
     "users",
@@ -137,6 +138,12 @@ def test_required_partial_unique_indexes_exist() -> None:
         columns={"dead_letter_event_id"},
         where_fragment="status IN ('pending', 'approved')",
     )
+    assert _has_partial_unique_index(
+        table_name="retry_jobs",
+        index_name="uq_retry_jobs_pending_delivery_run_at",
+        columns={"delivery_id", "run_at"},
+        where_fragment="status = 'pending'",
+    )
 
 
 def test_required_operational_indexes_exist() -> None:
@@ -259,6 +266,63 @@ def test_fourth_migration_adds_delivery_scheduling_idempotency() -> None:
     assert '"event_id", "destination_id", "routing_rule_id"' in migration_text
 
 
+def test_phase_4_delivery_execution_columns_exist() -> None:
+    delivery_columns = Base.metadata.tables["event_deliveries"].columns
+    attempt_columns = Base.metadata.tables["delivery_attempts"].columns
+    retry_columns = Base.metadata.tables["retry_jobs"].columns
+    dead_letter_columns = Base.metadata.tables["dead_letter_events"].columns
+
+    assert "delivered_at" in delivery_columns
+    assert "last_error_code" in delivery_columns
+    assert "last_error_message" in delivery_columns
+    assert "outcome" in attempt_columns
+    assert "error_code" in attempt_columns
+    assert "is_retryable" in attempt_columns
+    assert "created_at" in attempt_columns
+    assert "claimed_at" in retry_columns
+    assert "completed_at" in retry_columns
+    assert "updated_at" in retry_columns
+    assert "reason_code" in dead_letter_columns
+    assert "reason_message" in dead_letter_columns
+    assert "resolved_at" in dead_letter_columns
+    assert "created_at" in dead_letter_columns
+    assert "updated_at" in dead_letter_columns
+
+
+def test_phase_4_status_checks_include_execution_statuses() -> None:
+    delivery_checks = _check_constraints("event_deliveries")
+    attempt_checks = _check_constraints("delivery_attempts")
+    retry_checks = _check_constraints("retry_jobs")
+
+    delivery_status_check = delivery_checks["ck_event_deliveries_event_delivery_status"]
+    assert "'delivered'" in delivery_status_check
+    assert "'cancelled'" in delivery_status_check
+    assert "'dead_lettered'" in delivery_status_check
+    attempt_outcome_check = attempt_checks["ck_delivery_attempts_delivery_attempt_outcome"]
+    assert "'succeeded'" in attempt_outcome_check
+    assert "'failed'" in attempt_outcome_check
+    assert "'timed_out'" in attempt_outcome_check
+    retry_status_check = retry_checks["ck_retry_jobs_retry_job_status"]
+    assert "'pending'" in retry_status_check
+    assert "'claimed'" in retry_status_check
+    assert "'completed'" in retry_status_check
+    assert "'cancelled'" in retry_status_check
+
+
+def test_fifth_migration_adds_delivery_execution_support() -> None:
+    migration_text = _read_backend_file(DELIVERY_EXECUTION_MIGRATION_PATH)
+
+    assert 'revision: str = "0005_delivery_execution"' in migration_text
+    assert 'down_revision: str | None = "0004_routing_schedule"' in migration_text
+    assert '"delivered_at"' in migration_text
+    assert '"outcome"' in migration_text
+    assert '"is_retryable"' in migration_text
+    assert '"claimed_at"' in migration_text
+    assert '"completed_at"' in migration_text
+    assert '"reason_code"' in migration_text
+    assert "uq_retry_jobs_pending_delivery_run_at" in migration_text
+
+
 def _has_unique_constraint(table_name: str, columns: set[str]) -> bool:
     table = Base.metadata.tables[table_name]
     return any(
@@ -288,6 +352,15 @@ def _has_partial_unique_index(
         ):
             return True
     return False
+
+
+def _check_constraints(table_name: str) -> dict[str, str]:
+    table = Base.metadata.tables[table_name]
+    return {
+        constraint.name: str(constraint.sqltext)
+        for constraint in table.constraints
+        if isinstance(constraint, CheckConstraint)
+    }
 
 
 def _index_column_names(index: Index) -> set[str]:

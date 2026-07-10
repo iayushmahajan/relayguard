@@ -1,8 +1,8 @@
 # RelayGuard
 
-RelayGuard Phase 3 provides a minimal frontend shell, a backend FastAPI app foundation, developer tooling, CI quality checks, process health routing, typed configuration, structured logging, request correlation IDs, lazy PostgreSQL async session infrastructure, a normalized PostgreSQL persistence foundation, idempotent baseline seeding, PostgreSQL integration validation, deterministic known-integration webhook intake, canonical accepted-event creation, duplicate detection, rejected receipt recording, safe event metadata retrieval, deterministic routing rules, downstream destination management, and durable delivery scheduling records.
+RelayGuard Phase 4 provides a minimal frontend shell, a backend FastAPI app foundation, developer tooling, CI quality checks, process health routing, typed configuration, structured logging, request correlation IDs, lazy PostgreSQL async session infrastructure, a normalized PostgreSQL persistence foundation, idempotent baseline seeding, PostgreSQL integration validation, deterministic known-integration webhook intake, canonical accepted-event creation, duplicate detection, rejected receipt recording, safe event metadata retrieval, deterministic routing rules, downstream destination management, durable delivery scheduling records, HTTP delivery execution, retry attempt recording, durable retry jobs, and dead-letter records.
 
-Phase 3 intentionally includes **no startup database connection, HTTP delivery worker, delivery execution, retry worker, replay worker, authentication behavior, signature verification, retry execution, replay execution, or AI execution**.
+Phase 4 intentionally includes **no startup database connection, background HTTP delivery worker, replay worker, authentication behavior, signature verification, replay execution, AI execution, external queue, Redis, Celery, Kafka, or cloud service dependency**.
 
 ## Prerequisites (WSL/Linux)
 
@@ -50,6 +50,11 @@ The test Compose file defaults to host port `5434` to avoid common local Postgre
 - `GET /api/v1/integrations/{integration_slug}/routing-rules` - list routing rules
 - `POST /api/v1/events/{event_id}/schedule-deliveries` - schedule durable delivery records
 - `GET /api/v1/events/{event_id}/deliveries` - list safe delivery metadata
+- `POST /api/v1/deliveries/{delivery_id}/execute` - execute one due scheduled delivery
+- `POST /api/v1/retry-jobs/{retry_job_id}/execute` - execute one due pending retry job
+- `GET /api/v1/deliveries/{delivery_id}/retry-jobs` - list safe retry job metadata
+- `GET /api/v1/deliveries/{delivery_id}/attempts` - list safe delivery attempt metadata
+- `GET /api/v1/dead-letters` - list safe dead-letter metadata
 - `X-Correlation-ID` response header - valid inbound UUIDs are reused; otherwise the backend generates a UUID4
 
 The health endpoint does not check PostgreSQL readiness.
@@ -138,12 +143,49 @@ curl -i \
   http://localhost:8000/api/v1/events/00000000-0000-0000-0000-000000000000/deliveries
 ```
 
-Phase 3 creates durable `event_deliveries` rows only. It does not send HTTP requests to destination URLs.
+### Delivery execution examples
+
+Execute a due scheduled delivery:
+
+```bash
+curl -i -X POST \
+  http://localhost:8000/api/v1/deliveries/00000000-0000-0000-0000-000000000000/execute
+```
+
+Execute a due retry job:
+
+```bash
+curl -i -X POST \
+  http://localhost:8000/api/v1/retry-jobs/00000000-0000-0000-0000-000000000000/execute
+```
+
+List delivery attempts:
+
+```bash
+curl -i \
+  http://localhost:8000/api/v1/deliveries/00000000-0000-0000-0000-000000000000/attempts
+```
+
+List retry jobs for a delivery:
+
+```bash
+curl -i \
+  http://localhost:8000/api/v1/deliveries/00000000-0000-0000-0000-000000000000/retry-jobs
+```
+
+List open dead letters:
+
+```bash
+curl -i \
+  "http://localhost:8000/api/v1/dead-letters?resolution_status=open"
+```
+
+Phase 4 sends one HTTP POST per explicit execution request. It records every attempt, creates durable retry jobs for retryable failures, and creates one dead-letter record per terminal delivery. It does not run a background worker.
 
 ## Backend migrations
 
 The backend uses SQLAlchemy 2 async metadata with Alembic's async migration bridge.
-Phase 1C adds `0002_replay_statuses`, a forward migration that expands replay-request terminal statuses for integration-test compatibility while leaving the committed Phase 1B initial migration immutable. Phase 2 adds `0003_webhook_intake_support`, a forward migration that adds webhook receipt request metadata, permits duplicate receipt status, widens stored event types to the API contract, and records accepted event timestamps. Phase 3 adds `0004_routing_schedule`, a forward migration that prevents duplicate delivery schedules for the same event, destination, and routing rule.
+Phase 1C adds `0002_replay_statuses`, a forward migration that expands replay-request terminal statuses for integration-test compatibility while leaving the committed Phase 1B initial migration immutable. Phase 2 adds `0003_webhook_intake_support`, a forward migration that adds webhook receipt request metadata, permits duplicate receipt status, widens stored event types to the API contract, and records accepted event timestamps. Phase 3 adds `0004_routing_schedule`, a forward migration that prevents duplicate delivery schedules for the same event, destination, and routing rule. Phase 4 adds `0005_delivery_execution`, a forward migration that stores delivery execution timestamps/errors, attempt outcomes, retry job claim/completion metadata, a pending retry uniqueness rule, and dead-letter reason metadata.
 
 Use the isolated test database on host port `5434` for migration validation:
 
@@ -153,7 +195,7 @@ POSTGRES_PORT=5434 .venv/bin/python -m alembic upgrade head
 POSTGRES_PORT=5434 .venv/bin/python -m alembic downgrade base
 ```
 
-Phase 3 completes deterministic routing and durable delivery scheduling. HTTP delivery execution, retry execution, replay execution, authentication behavior, signature verification, and AI execution remain deferred.
+Phase 4 completes explicit delivery execution, retry execution, attempt recording, and dead-letter creation. Background workers, replay execution, authentication behavior, signature verification, and AI execution remain deferred.
 
 ## Backend seed command
 
