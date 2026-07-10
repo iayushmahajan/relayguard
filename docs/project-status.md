@@ -77,4 +77,16 @@
 - [x] Added PostgreSQL integration tests for replay creation, approval, rejection, execution, invalid transitions, idempotency, metadata safety, and audit logging
 - [x] Preserved database-free `make check` behavior
 - [x] Validated PostgreSQL integration checks against isolated host port `5434`
-- [ ] Background workers, authentication behavior, signature verification, frontend recovery UI, and AI execution not started
+- [ ] Background workers, authentication behavior, signature verification, and AI execution not started
+
+## Phase 6 - Frontend operator dashboard MVP
+- [x] Replaced the frontend shell with a substantial operator dashboard
+- [x] Added typed frontend API client and dashboard data models
+- [x] Added Vite dev proxy for relative `/api` calls to the local backend
+- [x] Added backend support endpoints for safe integration listing, integration activation/disablement, and recent event listing
+- [x] Added dashboard sections for overview, integrations, routing setup, webhook testing, events, deliveries, attempts, retry jobs, dead letters, and replay requests
+- [x] Added frontend tests for dashboard rendering, backend unavailable state, status badges, and webhook tester behavior
+- [x] Added PostgreSQL integration tests for dashboard support endpoints
+- [x] Preserved database-free `make check` behavior
+- [x] Validated PostgreSQL integration checks against isolated host port `5434`
+- [ ] Authentication behavior, signature verification, background workers, frontend auth/session management, and AI execution not started

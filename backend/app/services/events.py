@@ -29,3 +29,40 @@ async def get_event_metadata(
         received_at=event.received_at,
         accepted_at=event.accepted_at,
     )
+
+
+async def list_recent_events(
+    *,
+    session: AsyncSession,
+    limit: int,
+    integration_slug: str | None = None,
+) -> list[EventMetadataResponse] | None:
+    """Return recent safe event metadata, optionally scoped to one integration."""
+    statement = select(models.Event)
+    if integration_slug is not None:
+        integration = await session.scalar(
+            select(models.Integration).where(models.Integration.slug == integration_slug)
+        )
+        if integration is None:
+            return None
+        statement = statement.where(models.Event.integration_id == integration.id)
+    events = (
+        await session.scalars(
+            statement.order_by(
+                models.Event.received_at.desc(),
+                models.Event.id.asc(),
+            ).limit(limit)
+        )
+    ).all()
+    return [
+        EventMetadataResponse(
+            event_id=event.id,
+            integration_id=event.integration_id,
+            event_type=event.event_type,
+            source_event_id=event.source_event_id,
+            status=event.status,
+            received_at=event.received_at,
+            accepted_at=event.accepted_at,
+        )
+        for event in events
+    ]

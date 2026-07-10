@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from app.api.delivery_execution import router as delivery_execution_router
 from app.api.events import router as events_router
 from app.api.health import router as health_router
+from app.api.integrations import router as integrations_router
 from app.api.replay_requests import router as replay_requests_router
 from app.api.routing import router as routing_router
 from app.api.webhooks import router as webhooks_router
@@ -23,6 +24,7 @@ def create_app() -> FastAPI:
     )
     app.add_middleware(CorrelationIdMiddleware)
     app.include_router(health_router)
+    app.include_router(integrations_router)
     app.include_router(webhooks_router)
     app.include_router(routing_router)
     app.include_router(events_router)

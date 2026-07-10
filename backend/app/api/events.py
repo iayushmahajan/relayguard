@@ -3,7 +3,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,9 +11,26 @@ from app.db.session import get_async_session
 from app.schemas.events import EventMetadataResponse
 from app.schemas.routing import DeliveryResponse, DeliveryScheduleResponse
 from app.services.deliveries import list_deliveries_for_event, schedule_deliveries_for_event
-from app.services.events import get_event_metadata
+from app.services.events import get_event_metadata, list_recent_events
 
 router = APIRouter(prefix="/api/v1/events", tags=["events"])
+
+
+@router.get("", response_model=list[EventMetadataResponse])
+async def list_event_metadata(
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    integration_slug: Annotated[str | None, Query()] = None,
+) -> list[EventMetadataResponse]:
+    """List recent safe event metadata without payload contents."""
+    events = await list_recent_events(
+        session=session,
+        limit=limit,
+        integration_slug=integration_slug,
+    )
+    if events is None:
+        raise HTTPException(status_code=404, detail="integration not found")
+    return events
 
 
 @router.get("/{event_id}", response_model=EventMetadataResponse)

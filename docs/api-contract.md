@@ -10,6 +10,38 @@ Returns process-only health:
 {"status": "ok"}
 ```
 
+## Integrations
+
+`GET /api/v1/integrations`
+
+Returns safe integration metadata only:
+
+```json
+[
+  {
+    "integration_id": "00000000-0000-0000-0000-000000000000",
+    "slug": "stripe-sandbox",
+    "name": "Stripe Sandbox",
+    "status": "disabled",
+    "enabled": false,
+    "created_at": "2026-07-10T00:00:00Z",
+    "updated_at": "2026-07-10T00:00:00Z"
+  }
+]
+```
+
+`PATCH /api/v1/integrations/{integration_slug}`
+
+Dashboard-safe status update:
+
+```json
+{"status": "active"}
+```
+
+Allowed statuses are `active` and `disabled`. Unknown integrations return `404`. The response
+returns the same safe integration metadata shape. Secrets and integration configuration are never
+returned.
+
 ## Webhook Intake
 
 `POST /api/v1/integrations/{integration_slug}/webhooks`
@@ -60,6 +92,29 @@ Duplicate response, HTTP `200`:
 
 ## Event Metadata
 
+`GET /api/v1/events`
+
+Returns recent safe event metadata. Query parameters:
+
+- `limit`: default `25`, minimum `1`, maximum `100`.
+- `integration_slug`: optional integration filter.
+
+Unknown integration filters return `404`.
+
+```json
+[
+  {
+    "event_id": "00000000-0000-0000-0000-000000000000",
+    "integration_id": "00000000-0000-0000-0000-000000000000",
+    "event_type": "invoice.paid",
+    "source_event_id": "optional-provider-event-id-or-null",
+    "status": "accepted",
+    "received_at": "2026-07-09T00:00:00Z",
+    "accepted_at": "2026-07-09T00:00:00Z"
+  }
+]
+```
+
 `GET /api/v1/events/{event_id}`
 
 Returns safe metadata only:
@@ -76,7 +131,7 @@ Returns safe metadata only:
 }
 ```
 
-The endpoint never returns payload contents or raw webhook data.
+Event metadata endpoints never return payload contents or raw webhook data.
 
 ## Destinations
 

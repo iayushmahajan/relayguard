@@ -1,10 +1,11 @@
-# RelayGuard Phase 5 Architecture
+# RelayGuard Phase 6 Architecture
 
 ```mermaid
 flowchart LR
-  U[Developer Browser] --> F[Frontend\nReact + TypeScript + Vite + Tailwind]
+  U[Operator Browser] --> F[Dashboard MVP\nReact + TypeScript + Vite + Tailwind]
   W[Known Integration] --> B[Backend\nFastAPI API v1]
-  F -. API calls in later phases .-> B
+  F --> A[Typed Frontend API Client\nrelative /api/v1 calls]
+  A --> B
   B --> C[Pure ASGI Correlation Middleware\nX-Correlation-ID]
   B --> L[structlog JSON Logs\ncontextvars correlation_id]
   B --> S[Service Layer\nwebhook_intake + events]
@@ -25,6 +26,16 @@ flowchart LR
 PostgreSQL remains unconnected during startup and normal unit tests. Phase 1B added SQLAlchemy ORM metadata and an immutable initial Alembic migration for the normalized persistence foundation. Phase 1C adds idempotent seeding, PostgreSQL-only integration validation against the isolated test database on host port `5434`, and a forward `0002` migration that expands replay-request terminal statuses. Phase 2 adds `0003_webhook_intake_support` for receipt request metadata, duplicate receipt status, event-type length alignment, and accepted event timestamps. Phase 3 adds `0004_routing_schedule` to enforce idempotent delivery scheduling for each event, destination, and routing rule. Phase 4 adds `0005_delivery_execution` to store delivery execution timestamps/errors, attempt outcomes, retry job claim/completion metadata, pending retry uniqueness, and dead-letter reason metadata. Phase 5 adds `0006_replay_workflow` to store replay update/execution/resolution timestamps and to treat `running` replay requests as active for database-backed uniqueness.
 
 The schema uses UUID primary keys, UTC-aware timestamp columns, string status columns with check constraints, JSONB only for payload/configuration/schema/audit documents, and PostgreSQL partial unique indexes where domain rules require them.
+
+## Phase 6 frontend dashboard flow
+
+1. The React dashboard uses a small typed API client in `frontend/src/lib/api.ts`.
+2. During local development, Vite proxies relative `/api` requests to `http://127.0.0.1:8000`; production-like builds can use `VITE_API_BASE_URL` if needed.
+3. The dashboard loads process health, safe integration metadata, recent events, dead letters, and replay requests on startup. If the backend is unavailable, it renders an explicit unavailable state instead of crashing.
+4. Operators can activate or disable sandbox integrations through `PATCH /api/v1/integrations/{integration_slug}`. The endpoint updates only existing `enabled` and `status` fields and returns no secrets.
+5. Destination and routing forms call the existing Phase 3 APIs. Webhook testing calls the Phase 2 intake API and stores recent returned event IDs in local UI state.
+6. Event, delivery, attempt, retry, dead-letter, and replay panels call the existing safe metadata APIs and never display raw event payloads or response bodies.
+7. Delivery execution and replay execution remain explicit button-driven API calls. Phase 6 does not add a browser-side fake lifecycle, background worker, external queue, authentication, signature verification, AI execution, or a downstream mock service.
 
 ## Phase 2 intake flow
 

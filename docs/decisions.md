@@ -186,3 +186,20 @@
 - **Decision:** Write safe audit log entries for replay lifecycle actions.
 - **Rationale:** Recovery actions need an audit trail even before authentication exists. Audit documents contain IDs, statuses, correlation IDs where available, and operator-provided actor strings, but never payloads, response bodies, credentials, or secrets.
 - **Date:** 2026-07-10
+
+## Entry 31
+- **Decision:** Build the operator dashboard MVP before starting any AI-focused phase.
+- **Rationale:** The reliability lifecycle is now broad enough that operators need a browser surface to understand intake, routing, delivery, retry, dead-letter, and replay behavior end to end. The dashboard also exercises the existing APIs without introducing fake core lifecycle state.
+- **Date:** 2026-07-10
+- **Alternatives:** Deferring frontend work until after AI features was rejected because it would make the existing deterministic platform harder to evaluate manually.
+
+## Entry 32
+- **Decision:** Use relative `/api/v1` frontend API calls with a Vite dev proxy to `http://127.0.0.1:8000`.
+- **Rationale:** Relative calls keep the React app portable, while the proxy gives local development a clean browser experience without hardcoded backend origins. `VITE_API_BASE_URL` remains available for alternate environments.
+- **Date:** 2026-07-10
+
+## Entry 33
+- **Decision:** Add minimal dashboard support endpoints for safe integration listing, integration activation/disablement, and recent event listing.
+- **Rationale:** The dashboard needs these read-oriented and demo-oriented APIs to be usable from the browser. They return safe metadata only, require no schema migration, and do not expose secrets or payload contents.
+- **Date:** 2026-07-10
+- **Details:** `PATCH /api/v1/integrations/{integration_slug}` only maps `active` to `enabled=True,status=active` and `disabled` to `enabled=False,status=disabled`; it does not introduce authentication, secrets, or new integration behavior.

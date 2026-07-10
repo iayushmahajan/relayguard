@@ -1,8 +1,8 @@
 # RelayGuard
 
-RelayGuard Phase 5 provides a minimal frontend shell, a backend FastAPI app foundation, developer tooling, CI quality checks, process health routing, typed configuration, structured logging, request correlation IDs, lazy PostgreSQL async session infrastructure, a normalized PostgreSQL persistence foundation, idempotent baseline seeding, PostgreSQL integration validation, deterministic known-integration webhook intake, canonical accepted-event creation, duplicate detection, rejected receipt recording, safe event metadata retrieval, deterministic routing rules, downstream destination management, durable delivery scheduling records, HTTP delivery execution, retry attempt recording, durable retry jobs, dead-letter records, and a human-reviewed replay workflow for dead-letter recovery.
+RelayGuard Phase 6 provides an operator dashboard MVP, a backend FastAPI app foundation, developer tooling, CI quality checks, process health routing, typed configuration, structured logging, request correlation IDs, lazy PostgreSQL async session infrastructure, a normalized PostgreSQL persistence foundation, idempotent baseline seeding, PostgreSQL integration validation, deterministic known-integration webhook intake, canonical accepted-event creation, duplicate detection, rejected receipt recording, safe event metadata retrieval, deterministic routing rules, downstream destination management, durable delivery scheduling records, HTTP delivery execution, retry attempt recording, durable retry jobs, dead-letter records, and a human-reviewed replay workflow for dead-letter recovery.
 
-Phase 5 intentionally includes **no startup database connection, background HTTP delivery worker, replay worker, authentication behavior, signature verification, AI execution, external queue, Redis, Celery, Kafka, or cloud service dependency**. Replay execution is explicit API-driven recovery only.
+Phase 6 intentionally includes **no startup database connection, background HTTP delivery worker, replay worker, authentication behavior, signature verification, AI execution, external queue, Redis, Celery, Kafka, or cloud service dependency**. Replay execution remains explicit API-driven recovery only.
 
 ## Prerequisites (WSL/Linux)
 
@@ -42,7 +42,10 @@ The test Compose file defaults to host port `5434` to avoid common local Postgre
 ## Backend API
 
 - `GET /api/v1/health` - process-only health check
+- `GET /api/v1/integrations` - list safe integration metadata
+- `PATCH /api/v1/integrations/{integration_slug}` - activate or disable a known integration
 - `POST /api/v1/integrations/{integration_slug}/webhooks` - deterministic known-integration webhook intake
+- `GET /api/v1/events` - list recent safe canonical event metadata
 - `GET /api/v1/events/{event_id}` - safe canonical event metadata lookup
 - `POST /api/v1/integrations/{integration_slug}/destinations` - create downstream destination metadata
 - `GET /api/v1/integrations/{integration_slug}/destinations` - list downstream destination metadata
@@ -64,6 +67,43 @@ The test Compose file defaults to host port `5434` to avoid common local Postgre
 - `X-Correlation-ID` response header - valid inbound UUIDs are reused; otherwise the backend generates a UUID4
 
 The health endpoint does not check PostgreSQL readiness.
+
+## Browser dashboard demo
+
+Run the local backend with the isolated test database, then start Vite:
+
+```bash
+make db-test-up
+make migrate-test
+make seed-backend-test
+cd backend
+POSTGRES_PORT=5434 .venv/bin/uvicorn app.main:app --reload
+```
+
+In another terminal:
+
+```bash
+cd frontend
+npm run dev
+```
+
+Open the Vite URL shown in the terminal, usually `http://localhost:5173`. The dev server proxies
+relative `/api` calls to `http://127.0.0.1:8000`, so the dashboard can use the backend without
+hardcoded origins.
+
+Suggested operator demo flow:
+
+1. Confirm the backend health badge is active.
+2. Activate `stripe-sandbox`.
+3. Create an HTTP destination and an `invoice.paid` routing rule.
+4. Submit a demo webhook from the event tester.
+5. Select the accepted event and schedule deliveries.
+6. Execute the scheduled delivery and inspect attempts/retry jobs.
+7. If the example downstream URL fails, inspect the dead letter and create/approve/execute a replay request.
+
+The browser can trigger delivery and replay APIs, but a successful downstream delivery requires a
+reachable local or test endpoint. The included integration tests use in-process HTTP transports for
+success and failure cases without external internet.
 
 ### Webhook intake example
 
@@ -255,7 +295,7 @@ POSTGRES_PORT=5434 .venv/bin/python -m alembic upgrade head
 POSTGRES_PORT=5434 .venv/bin/python -m alembic downgrade base
 ```
 
-Phase 5 completes explicit human-reviewed replay recovery for dead-lettered deliveries. Background workers, authentication behavior, signature verification, and AI execution remain deferred.
+Phase 6 completes the browser operator dashboard MVP and minimal safe support APIs for listing integrations, toggling demo integrations, and listing recent events. Background workers, authentication behavior, signature verification, and AI execution remain deferred.
 
 ## Backend seed command
 
