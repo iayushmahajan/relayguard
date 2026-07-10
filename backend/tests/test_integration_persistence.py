@@ -51,7 +51,7 @@ def test_alembic_migration_is_applied(session_factory: async_sessionmaker[AsyncS
         async with session_factory() as session:
             return str(await session.scalar(text("SELECT version_num FROM alembic_version")))
 
-    assert asyncio.run(check_revision()) == "0003_webhook_intake_support"
+    assert asyncio.run(check_revision()) == "0004_routing_schedule"
 
 
 def test_seed_command_is_idempotent(session_factory: async_sessionmaker[AsyncSession]) -> None:
@@ -214,6 +214,32 @@ def test_dead_letter_event_is_one_to_one_per_delivery(
     asyncio.run(exercise())
 
 
+def test_event_delivery_route_is_unique(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async def exercise() -> None:
+        async with session_factory() as session:
+            event, destination, routing_rule = await _create_event_route(session)
+            session.add_all(
+                [
+                    models.EventDelivery(
+                        event_id=event.id,
+                        destination_id=destination.id,
+                        routing_rule_id=routing_rule.id,
+                    ),
+                    models.EventDelivery(
+                        event_id=event.id,
+                        destination_id=destination.id,
+                        routing_rule_id=routing_rule.id,
+                    ),
+                ]
+            )
+            with pytest.raises(IntegrityError):
+                await session.commit()
+
+    asyncio.run(exercise())
+
+
 def test_only_one_active_replay_request_per_dead_letter_event(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
@@ -313,6 +339,33 @@ async def _create_delivery(session: AsyncSession) -> models.EventDelivery:
     session.add(delivery)
     await session.flush()
     return delivery
+
+
+async def _create_event_route(
+    session: AsyncSession,
+) -> tuple[models.Event, models.DownstreamDestination, models.RoutingRule]:
+    integration = await _create_integration(session)
+    destination = models.DownstreamDestination(
+        integration_id=integration.id,
+        name=f"Destination {uuid.uuid4()}",
+        endpoint_url="https://example.test/webhook",
+    )
+    event = models.Event(
+        integration_id=integration.id,
+        deduplication_key=f"event-{uuid.uuid4()}",
+        event_type="example.created",
+    )
+    session.add_all([destination, event])
+    await session.flush()
+    routing_rule = models.RoutingRule(
+        integration_id=integration.id,
+        destination_id=destination.id,
+        name=f"Rule {uuid.uuid4()}",
+        match_configuration={"event_type": event.event_type},
+    )
+    session.add(routing_rule)
+    await session.flush()
+    return event, destination, routing_rule
 
 
 async def _create_dead_letter_event(session: AsyncSession) -> models.DeadLetterEvent:

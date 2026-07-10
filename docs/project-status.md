@@ -42,5 +42,13 @@
 - [x] Validated PostgreSQL integration checks against isolated host port `5434`
 - [ ] Delivery execution, retry execution, replay execution, authentication behavior, signature verification, and AI execution not started
 
-## Phase 3 - Advanced capabilities
-- [ ] Not started
+## Phase 3 - Deterministic routing and delivery scheduling
+- [x] Added destination management endpoints
+- [x] Added deterministic event-type routing rule endpoints
+- [x] Added `0004_routing_schedule` idempotency migration
+- [x] Added durable delivery scheduling endpoint
+- [x] Added safe delivery metadata listing endpoint
+- [x] Added service-layer routing and scheduling orchestration
+- [x] Added PostgreSQL integration tests for destination, routing, scheduling, idempotency, matching, and delivery listing behavior
+- [x] Preserved database-free `make check` behavior
+- [ ] HTTP delivery execution, retry execution, replay execution, authentication behavior, signature verification, and AI execution not started

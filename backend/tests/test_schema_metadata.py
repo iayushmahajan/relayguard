@@ -9,6 +9,7 @@ from app.db.base import Base
 INITIAL_MIGRATION_PATH = "alembic/versions/0001_initial_schema_created_relayguard_initial_schema.py"
 REPLAY_STATUS_MIGRATION_PATH = "alembic/versions/0002_replay_statuses.py"
 WEBHOOK_INTAKE_MIGRATION_PATH = "alembic/versions/0003_webhook_intake_support.py"
+ROUTING_SCHEDULE_MIGRATION_PATH = "alembic/versions/0004_routing_schedule.py"
 
 REQUIRED_TABLES = {
     "users",
@@ -113,6 +114,10 @@ def test_required_unique_constraints_exist() -> None:
     assert _has_unique_constraint("event_payloads", {"event_id"})
     assert _has_unique_constraint("dead_letter_events", {"delivery_id"})
     assert _has_unique_constraint("events", {"integration_id", "deduplication_key"})
+    assert _has_unique_constraint(
+        "event_deliveries",
+        {"event_id", "destination_id", "routing_rule_id"},
+    )
     assert _has_unique_constraint("delivery_attempts", {"delivery_id", "attempt_number"})
     assert _has_unique_constraint("auth_sessions", {"token_hash"})
     assert _has_unique_constraint("integrations", {"name"})
@@ -243,6 +248,15 @@ def test_third_migration_adds_webhook_intake_support() -> None:
     assert '"body_size_bytes"' in migration_text
     assert '"correlation_id"' in migration_text
     assert '"accepted_at"' in migration_text
+
+
+def test_fourth_migration_adds_delivery_scheduling_idempotency() -> None:
+    migration_text = _read_backend_file(ROUTING_SCHEDULE_MIGRATION_PATH)
+
+    assert 'revision: str = "0004_routing_schedule"' in migration_text
+    assert 'down_revision: str | None = "0003_webhook_intake_support"' in migration_text
+    assert "uq_event_deliveries_event_destination_routing_rule" in migration_text
+    assert '"event_id", "destination_id", "routing_rule_id"' in migration_text
 
 
 def _has_unique_constraint(table_name: str, columns: set[str]) -> bool:

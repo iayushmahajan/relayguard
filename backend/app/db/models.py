@@ -460,6 +460,12 @@ class EventDelivery(Base):
             ")",
             name="event_delivery_status",
         ),
+        UniqueConstraint(
+            "event_id",
+            "destination_id",
+            "routing_rule_id",
+            name="uq_event_deliveries_event_destination_routing_rule",
+        ),
         Index("ix_event_deliveries_status_next_attempt_at", "status", "next_attempt_at"),
     )
 

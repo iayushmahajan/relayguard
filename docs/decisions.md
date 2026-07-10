@@ -110,3 +110,21 @@
 - **Rationale:** Phase 2 needs one forward migration to permit duplicate receipt status, store safe request metadata, align `events.event_type` with the 255-character API contract, and expose `accepted_at`. Existing `webhook_receipts.raw_body_hash` and `event_payloads.payload_hash` already safely store SHA-256 values, so renaming them would add avoidable migration churn.
 - **Date:** 2026-07-09
 - **Downgrade note:** The downgrade restores the Phase 1C receipt status set, drops Phase 2 metadata columns, drops `accepted_at`, and truncates event types above 200 characters before restoring the old column length.
+
+## Entry 18
+- **Decision:** Match Phase 3 routing rules deterministically by exact canonical `event_type`.
+- **Rationale:** Exact event-type matching keeps routing explainable, testable, and independent of AI or provider-specific heuristics.
+- **Date:** 2026-07-10
+- **Alternatives:** Pattern matching, expression languages, payload inspection, and AI classification were deferred to preserve deterministic Phase 3 behavior.
+
+## Entry 19
+- **Decision:** Add `0004_routing_schedule` with a unique constraint across `event_id`, `destination_id`, and `routing_rule_id` on `event_deliveries`.
+- **Rationale:** Phase 3 scheduling must be idempotent and safe under concurrent requests. The existing schema did not have a database-backed uniqueness rule for a scheduled event route.
+- **Date:** 2026-07-10
+- **Downgrade note:** The downgrade removes only the Phase 3 unique constraint.
+
+## Entry 20
+- **Decision:** Phase 3 creates scheduled delivery records but does not execute downstream HTTP calls or retry jobs.
+- **Rationale:** Separating durable scheduling from network execution keeps the routing foundation reviewable and avoids introducing worker, retry, secret, or signature behavior before those phases are specified.
+- **Date:** 2026-07-10
+- **Details:** Accepted events remain `accepted` after scheduling in Phase 3. Delivery execution and event status advancement are deferred to a later phase.
