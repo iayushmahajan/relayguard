@@ -12,7 +12,11 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models
-from app.schemas.routing import DeliveryResponse, DeliveryScheduleResponse
+from app.schemas.routing import (
+    DeliveryResponse,
+    DeliveryScheduleResponse,
+    RecentDeliveryResponse,
+)
 from app.services.routing import routing_rule_event_type
 
 _ACCEPTED_STATUS = "accepted"
@@ -101,6 +105,58 @@ async def list_deliveries_for_event(
         )
     ).all()
     return [_to_delivery_response(delivery) for delivery in deliveries]
+
+
+async def list_recent_deliveries(
+    *,
+    session: AsyncSession,
+    limit: int,
+    status: str | None = None,
+    event_id: uuid.UUID | None = None,
+) -> list[RecentDeliveryResponse]:
+    """Return recent safe delivery metadata with display context."""
+    statement = (
+        select(
+            models.EventDelivery,
+            models.Event.event_type,
+            models.DownstreamDestination.name.label("destination_name"),
+            models.RoutingRule.name.label("routing_rule_name"),
+        )
+        .join(models.Event, models.EventDelivery.event_id == models.Event.id)
+        .join(
+            models.DownstreamDestination,
+            models.EventDelivery.destination_id == models.DownstreamDestination.id,
+        )
+        .outerjoin(
+            models.RoutingRule, models.EventDelivery.routing_rule_id == models.RoutingRule.id
+        )
+        .order_by(models.EventDelivery.created_at.desc(), models.EventDelivery.id.desc())
+        .limit(limit)
+    )
+    if status is not None:
+        statement = statement.where(models.EventDelivery.status == status)
+    if event_id is not None:
+        statement = statement.where(models.EventDelivery.event_id == event_id)
+
+    rows = (await session.execute(statement)).all()
+    return [
+        RecentDeliveryResponse(
+            delivery_id=delivery.id,
+            event_id=delivery.event_id,
+            event_type=event_type,
+            destination_id=delivery.destination_id,
+            destination_name=destination_name,
+            routing_rule_id=delivery.routing_rule_id,
+            routing_rule_name=routing_rule_name,
+            status=delivery.status,
+            attempt_count=delivery.attempt_count,
+            next_attempt_at=delivery.next_attempt_at,
+            last_attempt_at=delivery.last_attempt_at,
+            created_at=delivery.created_at,
+            updated_at=delivery.updated_at,
+        )
+        for delivery, event_type, destination_name, routing_rule_name in rows
+    ]
 
 
 async def _load_matching_routes(

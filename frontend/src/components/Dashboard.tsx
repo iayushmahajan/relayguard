@@ -238,17 +238,29 @@ export function Dashboard() {
     }
 
     try {
-      const [integrationData, eventData, deadLetterData, replayData] =
-        await Promise.all([
-          api.listIntegrations(),
-          api.listEvents(),
-          api.listDeadLetters(),
-          api.listReplayRequests(),
-        ]);
+      const [
+        integrationData,
+        eventData,
+        deliveryData,
+        deadLetterData,
+        replayData,
+      ] = await Promise.all([
+        api.listIntegrations(),
+        api.listEvents(),
+        api.listRecentDeliveries(),
+        api.listDeadLetters(),
+        api.listReplayRequests(),
+      ]);
       setIntegrations(integrationData);
       setEvents(eventData);
+      setDeliveries(deliveryData);
       setDeadLetters(deadLetterData);
       setReplayRequests(replayData);
+      setSelectedDeliveryId((current) =>
+        deliveryData.some((delivery) => delivery.delivery_id === current)
+          ? current
+          : (deliveryData[0]?.delivery_id ?? ""),
+      );
       if (integrationData.length > 0) {
         setSelectedSlug((current) => current || integrationData[0].slug);
       }
@@ -279,20 +291,41 @@ export function Dashboard() {
           : (destinationData[0]?.destination_id ?? ""),
       }));
       setSelectedEventId(eventData[0]?.event_id ?? "");
-      setDeliveries([]);
-      setSelectedDeliveryId("");
-      setAttempts([]);
-      setRetryJobs([]);
     } catch (caught) {
       setToast({ tone: "error", message: errorMessage(caught) });
     }
   }
 
+  async function refreshRecentDeliveries(preferredDeliveryId?: string) {
+    const deliveryData = await api.listRecentDeliveries();
+    setDeliveries(deliveryData);
+    setSelectedDeliveryId((current) => {
+      if (
+        preferredDeliveryId &&
+        deliveryData.some(
+          (delivery) => delivery.delivery_id === preferredDeliveryId,
+        )
+      ) {
+        return preferredDeliveryId;
+      }
+      if (deliveryData.some((delivery) => delivery.delivery_id === current)) {
+        return current;
+      }
+      return deliveryData[0]?.delivery_id ?? "";
+    });
+  }
+
   async function refreshEventData(eventId: string) {
     try {
       const deliveryData = await api.listDeliveries(eventId);
-      setDeliveries(deliveryData);
-      setSelectedDeliveryId(deliveryData[0]?.delivery_id ?? "");
+      setDeliveries((current) => mergeDeliveries(deliveryData, current));
+      if (deliveryData.length > 0) {
+        setSelectedDeliveryId((current) =>
+          deliveryData.some((delivery) => delivery.delivery_id === current)
+            ? current
+            : deliveryData[0].delivery_id,
+        );
+      }
     } catch (caught) {
       setToast({ tone: "error", message: errorMessage(caught) });
     }
@@ -444,6 +477,7 @@ export function Dashboard() {
     try {
       const result = await api.scheduleDeliveries(selectedEventId);
       await refreshEventData(selectedEventId);
+      await refreshRecentDeliveries();
       setToast({
         tone: "success",
         message: `Scheduled ${result.scheduled_count}; already scheduled ${result.already_scheduled_count}.`,
@@ -459,9 +493,7 @@ export function Dashboard() {
     }
     try {
       const result = await api.executeDelivery(selectedDeliveryId);
-      if (selectedEventId) {
-        await refreshEventData(selectedEventId);
-      }
+      await refreshRecentDeliveries(selectedDeliveryId);
       await refreshDeliveryData(selectedDeliveryId);
       await refreshRecoveryData();
       setToast({
@@ -476,6 +508,7 @@ export function Dashboard() {
   async function executeRetryJob(retryJobId: string) {
     try {
       const result = await api.executeRetryJob(retryJobId);
+      await refreshRecentDeliveries(result.delivery_id);
       await refreshDeliveryData(result.delivery_id);
       await refreshRecoveryData();
       setToast({
@@ -547,6 +580,7 @@ export function Dashboard() {
         activeReplayForDeadLetter.replay_request_id,
       );
       await refreshRecoveryData();
+      await refreshRecentDeliveries(result.delivery_id);
       if (selectedDeliveryId) {
         await refreshDeliveryData(selectedDeliveryId);
       }
@@ -1422,16 +1456,27 @@ function DeliveriesPage({
             />
           ) : (
             <DataTable
-              columns={["Delivery", "Status", "Attempts", "Next attempt"]}
+              columns={[
+                "Delivery",
+                "Event type",
+                "Destination",
+                "Status",
+                "Attempts",
+                "Last attempt",
+              ]}
               rows={deliveries.map((delivery) => ({
                 id: delivery.delivery_id,
                 cells: [
                   shortId(delivery.delivery_id),
+                  delivery.event_type ?? shortId(delivery.event_id),
+                  delivery.destination_name ?? shortId(delivery.destination_id),
                   <StatusBadge key="status" status={delivery.status} />,
                   String(delivery.attempt_count),
-                  delivery.next_attempt_at
-                    ? formatDate(delivery.next_attempt_at)
-                    : "none",
+                  delivery.last_attempt_at
+                    ? formatDate(delivery.last_attempt_at)
+                    : delivery.next_attempt_at
+                      ? `due ${formatDate(delivery.next_attempt_at)}`
+                      : "none",
                 ],
                 onClick: () => setSelectedDeliveryId(delivery.delivery_id),
               }))}
@@ -1449,10 +1494,22 @@ function DeliveriesPage({
                 label="Destination ID"
                 value={selectedDelivery.destination_id}
               />
+              {selectedDelivery.destination_name ? (
+                <KeyValue
+                  label="Destination"
+                  value={selectedDelivery.destination_name}
+                />
+              ) : null}
               <KeyValue
                 label="Routing rule ID"
                 value={selectedDelivery.routing_rule_id ?? "manual"}
               />
+              {selectedDelivery.routing_rule_name ? (
+                <KeyValue
+                  label="Routing rule"
+                  value={selectedDelivery.routing_rule_name}
+                />
+              ) : null}
               <StatusBadge status={selectedDelivery.status} />
               <PrimaryButton
                 disabled={
@@ -1899,6 +1956,19 @@ function formatDate(value: string) {
     dateStyle: "short",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+function mergeDeliveries(incoming: Delivery[], existing: Delivery[]) {
+  const merged = new Map<string, Delivery>();
+  for (const delivery of incoming) {
+    merged.set(delivery.delivery_id, delivery);
+  }
+  for (const delivery of existing) {
+    if (!merged.has(delivery.delivery_id)) {
+      merged.set(delivery.delivery_id, delivery);
+    }
+  }
+  return Array.from(merged.values());
 }
 
 function errorMessage(caught: unknown) {

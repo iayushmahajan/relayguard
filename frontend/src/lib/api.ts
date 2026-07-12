@@ -143,6 +143,7 @@ export const api = {
     request<DeliveryScheduleResult>(`/events/${eventId}/schedule-deliveries`, {
       method: "POST",
     }),
+  listRecentDeliveries: () => request<Delivery[]>("/deliveries?limit=50"),
   listDeliveries: (eventId: string) =>
     request<Delivery[]>(`/events/${eventId}/deliveries`),
   executeDelivery: (deliveryId: string) =>

@@ -327,6 +327,58 @@ def test_schedule_deliveries_for_matching_active_route(
     asyncio.run(exercise())
 
 
+def test_recent_deliveries_list_returns_safe_metadata_and_filters(
+    app: FastAPI,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async def exercise() -> None:
+        event = await _create_routable_event(session_factory)
+        async with _client(app) as client:
+            await client.post(f"/api/v1/events/{event.id}/schedule-deliveries")
+            response = await client.get("/api/v1/deliveries?limit=10")
+            scoped_response = await client.get(f"/api/v1/deliveries?event_id={event.id}")
+            status_response = await client.get("/api/v1/deliveries?status=scheduled")
+            limit_response = await client.get("/api/v1/deliveries?limit=101")
+
+        assert response.status_code == 200
+        assert scoped_response.status_code == 200
+        assert status_response.status_code == 200
+        assert limit_response.status_code == 422
+        _assert_correlation_id(response)
+        _assert_correlation_id(scoped_response)
+        _assert_correlation_id(status_response)
+        _assert_correlation_id(limit_response)
+        data = response.json()
+        assert len(data) == 1
+        assert data == scoped_response.json()
+        assert data == status_response.json()
+        assert data[0]["event_id"] == str(event.id)
+        assert data[0]["event_type"] == "invoice.paid"
+        assert data[0]["destination_name"].startswith("Destination ")
+        assert data[0]["routing_rule_name"].startswith("Rule ")
+        assert data[0]["status"] == "scheduled"
+        assert set(data[0]) == {
+            "delivery_id",
+            "event_id",
+            "event_type",
+            "destination_id",
+            "destination_name",
+            "routing_rule_id",
+            "routing_rule_name",
+            "status",
+            "attempt_count",
+            "next_attempt_at",
+            "last_attempt_at",
+            "created_at",
+            "updated_at",
+        }
+        assert "payload" not in str(data).lower()
+        assert "response_body" not in str(data).lower()
+        assert "secret" not in str(data).lower()
+
+    asyncio.run(exercise())
+
+
 def test_schedule_deliveries_is_idempotent(
     app: FastAPI,
     session_factory: async_sessionmaker[AsyncSession],

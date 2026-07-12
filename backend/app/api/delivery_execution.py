@@ -17,7 +17,9 @@ from app.schemas.delivery_execution import (
     RetryJobExecutionResponse,
     RetryJobResponse,
 )
+from app.schemas.routing import RecentDeliveryResponse
 from app.services.dead_letters import list_dead_letters
+from app.services.deliveries import list_recent_deliveries
 from app.services.delivery_execution import execute_delivery, list_delivery_attempts
 from app.services.retry_jobs import execute_retry_job, list_retry_jobs_for_delivery
 
@@ -28,6 +30,22 @@ async def get_delivery_http_client() -> AsyncIterator[httpx.AsyncClient]:
     """Yield the runtime HTTP client used for downstream deliveries."""
     async with httpx.AsyncClient() as client:
         yield client
+
+
+@router.get("/deliveries", response_model=list[RecentDeliveryResponse])
+async def list_recent_delivery_metadata(
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    status: Annotated[str | None, Query()] = None,
+    event_id: Annotated[UUID | None, Query()] = None,
+) -> list[RecentDeliveryResponse]:
+    """List recent safe delivery metadata without payloads or response bodies."""
+    return await list_recent_deliveries(
+        session=session,
+        limit=limit,
+        status=status,
+        event_id=event_id,
+    )
 
 
 @router.post("/deliveries/{delivery_id}/execute", response_model=DeliveryExecutionResponse)

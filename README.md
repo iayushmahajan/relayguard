@@ -55,6 +55,7 @@ The test Compose file defaults to host port `5434` to avoid common local Postgre
 - `PATCH /api/v1/integrations/{integration_slug}/routing-rules/{routing_rule_id}` - update safe routing-rule metadata
 - `POST /api/v1/events/{event_id}/schedule-deliveries` - schedule durable delivery records
 - `GET /api/v1/events/{event_id}/deliveries` - list safe delivery metadata
+- `GET /api/v1/deliveries` - list recent safe delivery metadata across events
 - `POST /api/v1/deliveries/{delivery_id}/execute` - execute one due scheduled delivery
 - `POST /api/v1/retry-jobs/{retry_job_id}/execute` - execute one due pending retry job
 - `GET /api/v1/deliveries/{delivery_id}/retry-jobs` - list safe retry job metadata

@@ -257,6 +257,37 @@ Returns safe delivery metadata only:
 Delivery listing never returns payload contents, raw webhook data, destination configuration, or
 secrets.
 
+`GET /api/v1/deliveries`
+
+Returns recent safe delivery metadata across events. Query parameters:
+
+- `limit`: default `25`, minimum `1`, maximum `100`.
+- `status`: optional delivery status filter.
+- `event_id`: optional event filter.
+
+```json
+[
+  {
+    "delivery_id": "00000000-0000-0000-0000-000000000000",
+    "event_id": "00000000-0000-0000-0000-000000000000",
+    "event_type": "invoice.paid",
+    "destination_id": "00000000-0000-0000-0000-000000000000",
+    "destination_name": "Billing Service",
+    "routing_rule_id": "00000000-0000-0000-0000-000000000000",
+    "routing_rule_name": "Invoice paid to billing",
+    "status": "scheduled",
+    "attempt_count": 0,
+    "next_attempt_at": "2026-07-10T00:00:00Z",
+    "last_attempt_at": null,
+    "created_at": "2026-07-10T00:00:00Z",
+    "updated_at": "2026-07-10T00:00:00Z"
+  }
+]
+```
+
+The recent delivery endpoint is intended for dashboard/operator visibility. It never returns event
+payloads, response bodies, destination configuration, or secrets.
+
 ## Delivery Execution
 
 `POST /api/v1/deliveries/{delivery_id}/execute`

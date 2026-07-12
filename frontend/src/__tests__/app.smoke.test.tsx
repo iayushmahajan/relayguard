@@ -182,6 +182,46 @@ describe("RelayGuard dashboard", () => {
     );
   });
 
+  it("loads recent deliveries when the Deliveries page opens", async () => {
+    const fetchMock = vi.fn(mockDashboardFetch);
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const navigation = await screen.findByRole("navigation", {
+      name: /Dashboard sections/i,
+    });
+    await userEvent.click(
+      within(navigation).getByRole("button", { name: "Deliveries" }),
+    );
+
+    expect(getFetchOperations(fetchMock)).toContain("GET /api/v1/deliveries");
+    expect(screen.getByText("No deliveries")).toBeInTheDocument();
+  });
+
+  it("shows guided-demo deliveries from recent delivery metadata", async () => {
+    const fetchMock = vi.fn(createGuidedDemoFetch({ existingSetup: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Successful Delivery/i }),
+    );
+    expect(await screen.findByText(/attempt succeeded/i)).toBeInTheDocument();
+
+    const navigation = screen.getByRole("navigation", {
+      name: /Dashboard sections/i,
+    });
+    await userEvent.click(
+      within(navigation).getByRole("button", { name: "Deliveries" }),
+    );
+
+    expect(await screen.findByText("demo.success")).toBeInTheDocument();
+    expect(screen.getAllByText("Success Receiver").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("delivered").length).toBeGreaterThan(0);
+  });
+
   it("blocks routing rule creation until a destination exists", async () => {
     vi.stubGlobal("fetch", vi.fn(mockDashboardFetch));
 
@@ -368,6 +408,9 @@ function responseFor(url: string) {
     return [];
   }
   if (url.includes("/routing-rules")) {
+    return [];
+  }
+  if (url.includes("/deliveries?limit=50")) {
     return [];
   }
   if (url.includes("/events")) {
@@ -590,9 +633,13 @@ function createGuidedDemoFetch({ existingSetup }: { existingSetup: boolean }) {
       const eventId = url.split("/").at(-2) ?? "event-success";
       return jsonResponse(deliveries[eventId] ?? []);
     }
+    if (url.includes("/deliveries?limit=50")) {
+      return jsonResponse(Object.values(deliveries).flat());
+    }
     if (url.endsWith("/execute") && url.includes("/deliveries/")) {
       const deliveryId = url.split("/").at(-2);
       if (deliveryId === "delivery-recovery") {
+        updateDeliveryStatus(deliveries, "delivery-recovery", "dead_lettered");
         deadLetters.push({
           dead_letter_id: "dead-letter-recovery",
           delivery_id: "delivery-recovery",
@@ -614,6 +661,7 @@ function createGuidedDemoFetch({ existingSetup }: { existingSetup: boolean }) {
           next_attempt_at: null,
         });
       }
+      updateDeliveryStatus(deliveries, "delivery-success", "delivered");
       return jsonResponse({
         delivery_id: deliveryId,
         status: "delivered",
@@ -679,6 +727,7 @@ function createGuidedDemoFetch({ existingSetup }: { existingSetup: boolean }) {
       replay.status = "resolved";
       const deadLetter = deadLetters[0] as Record<string, unknown>;
       deadLetter.resolution_status = "resolved";
+      updateDeliveryStatus(deliveries, "delivery-recovery", "delivered");
       return jsonResponse({
         replay_request_id: "replay-recovery",
         delivery_id: "delivery-recovery",
@@ -698,7 +747,8 @@ function createGuidedDemoFetch({ existingSetup }: { existingSetup: boolean }) {
 function getFetchOperations(fetchMock: ReturnType<typeof vi.fn>) {
   return fetchMock.mock.calls.map(([input, init]) => {
     const url = typeof input === "string" ? input : input.toString();
-    const path = url.startsWith("http") ? new URL(url).pathname : url;
+    const parsed = url.startsWith("http") ? new URL(url) : null;
+    const path = parsed ? parsed.pathname : url.split("?")[0];
     return `${init?.method ?? "GET"} ${path}`;
   });
 }
@@ -777,15 +827,46 @@ function deliveryFixture(
   destinationId: string,
   routingRuleId: string,
 ) {
+  const isRecovery = deliveryId.includes("recovery");
   return {
     delivery_id: deliveryId,
     event_id: eventId,
+    event_type: isRecovery ? "demo.recovery" : "demo.success",
     destination_id: destinationId,
+    destination_name: isRecovery ? "Reject Receiver" : "Success Receiver",
     routing_rule_id: routingRuleId,
+    routing_rule_name: isRecovery
+      ? "Demo Recovery Route"
+      : "Demo Success Route",
     status: "scheduled",
     next_attempt_at: "2026-07-12T00:00:00Z",
+    last_attempt_at: null,
     attempt_count: 0,
     created_at: "2026-07-12T00:00:00Z",
     updated_at: "2026-07-12T00:00:00Z",
   };
+}
+
+function updateDeliveryStatus(
+  deliveries: Record<string, unknown[]>,
+  deliveryId: string,
+  status: string,
+) {
+  for (const deliveryList of Object.values(deliveries)) {
+    const delivery = deliveryList.find(
+      (candidate) =>
+        typeof candidate === "object" &&
+        candidate !== null &&
+        "delivery_id" in candidate &&
+        candidate.delivery_id === deliveryId,
+    ) as Record<string, unknown> | undefined;
+    if (delivery) {
+      delivery.status = status;
+      delivery.attempt_count = 1;
+      delivery.last_attempt_at = "2026-07-12T00:00:00Z";
+      delivery.next_attempt_at =
+        status === "delivered" ? null : delivery.next_attempt_at;
+      return;
+    }
+  }
 }

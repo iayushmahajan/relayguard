@@ -224,3 +224,21 @@ class DeliveryResponse(BaseModel):
     attempt_count: int
     created_at: datetime
     updated_at: datetime
+
+
+class RecentDeliveryResponse(BaseModel):
+    """Safe recent delivery metadata with display context."""
+
+    delivery_id: UUID
+    event_id: UUID
+    event_type: str
+    destination_id: UUID
+    destination_name: str
+    routing_rule_id: UUID | None
+    routing_rule_name: str | None
+    status: str
+    attempt_count: int
+    next_attempt_at: datetime | None
+    last_attempt_at: datetime | None
+    created_at: datetime
+    updated_at: datetime

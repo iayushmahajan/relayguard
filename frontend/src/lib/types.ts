@@ -56,10 +56,14 @@ export type EventMetadata = {
 export type Delivery = {
   delivery_id: string;
   event_id: string;
+  event_type?: string;
   destination_id: string;
+  destination_name?: string;
   routing_rule_id: string | null;
+  routing_rule_name?: string | null;
   status: string;
   next_attempt_at: string | null;
+  last_attempt_at?: string | null;
   attempt_count: number;
   created_at: string;
   updated_at: string;
