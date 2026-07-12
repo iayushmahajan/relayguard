@@ -91,6 +91,67 @@ describe("RelayGuard dashboard", () => {
     );
   });
 
+  it("blocks routing rule creation until a destination exists", async () => {
+    vi.stubGlobal("fetch", vi.fn(mockDashboardFetch));
+
+    render(<App />);
+
+    const navigation = await screen.findByRole("navigation", {
+      name: /Dashboard sections/i,
+    });
+    await userEvent.click(
+      within(navigation).getByRole("button", { name: "Route Setup" }),
+    );
+
+    expect(screen.getByLabelText(/^Destination$/i)).toBeDisabled();
+    expect(
+      screen.getByText("Create a destination before adding a routing rule."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Create routing rule" }),
+    ).toBeDisabled();
+  });
+
+  it("sends the selected destination when creating a routing rule", async () => {
+    const fetchMock = vi.fn(mockDashboardFetchWithDestinations);
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const navigation = await screen.findByRole("navigation", {
+      name: /Dashboard sections/i,
+    });
+    await userEvent.click(
+      within(navigation).getByRole("button", { name: "Route Setup" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByLabelText(/^Destination$/i)).toHaveValue(
+        "22222222-2222-4222-8222-222222222222",
+      ),
+    );
+    await userEvent.selectOptions(
+      screen.getByLabelText(/^Destination$/i),
+      "33333333-3333-4333-8333-333333333333",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Create routing rule" }),
+    );
+
+    await waitFor(() => {
+      const createCall = fetchMock.mock.calls.find(([input, init]) => {
+        const url = typeof input === "string" ? input : input.toString();
+        return url.includes("/routing-rules") && init?.method === "POST";
+      });
+      expect(createCall).toBeDefined();
+      expect(JSON.parse(String(createCall?.[1]?.body))).toEqual(
+        expect.objectContaining({
+          destination_id: "33333333-3333-4333-8333-333333333333",
+        }),
+      );
+    });
+  });
+
   it("keeps overview compact instead of rendering every workflow section", async () => {
     vi.stubGlobal("fetch", vi.fn(mockDashboardFetch));
 
@@ -228,4 +289,69 @@ function responseFor(url: string) {
     return [];
   }
   return {};
+}
+
+function mockDashboardFetchWithDestinations(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+) {
+  const url = typeof input === "string" ? input : input.toString();
+  if (url.includes("/routing-rules") && init?.method === "POST") {
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          routing_rule_id: "44444444-4444-4444-8444-444444444444",
+          integration_id: "11111111-1111-4111-8111-111111111111",
+          destination_id: JSON.parse(String(init.body)).destination_id,
+          name: "Invoice paid to billing",
+          event_type: "invoice.paid",
+          priority: 100,
+          status: "active",
+          created_at: "2026-07-10T00:00:00Z",
+          updated_at: "2026-07-10T00:00:00Z",
+        }),
+        {
+          headers: { "Content-Type": "application/json" },
+          status: 201,
+        },
+      ),
+    );
+  }
+  const body = responseFor(url);
+  return Promise.resolve(
+    new Response(
+      JSON.stringify(
+        url.includes("/destinations")
+          ? [
+              {
+                destination_id: "22222222-2222-4222-8222-222222222222",
+                integration_id: "11111111-1111-4111-8111-111111111111",
+                name: "Success Receiver",
+                destination_type: "http",
+                endpoint_url: "http://127.0.0.1:9000/success",
+                configuration: {},
+                status: "active",
+                created_at: "2026-07-10T00:00:00Z",
+                updated_at: "2026-07-10T00:00:00Z",
+              },
+              {
+                destination_id: "33333333-3333-4333-8333-333333333333",
+                integration_id: "11111111-1111-4111-8111-111111111111",
+                name: "Reject Receiver",
+                destination_type: "http",
+                endpoint_url: "http://127.0.0.1:9000/reject",
+                configuration: {},
+                status: "active",
+                created_at: "2026-07-10T00:00:00Z",
+                updated_at: "2026-07-10T00:00:00Z",
+              },
+            ]
+          : body,
+      ),
+      {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      },
+    ),
+  );
 }

@@ -97,6 +97,7 @@ export function Dashboard() {
   });
   const [ruleDraft, setRuleDraft] = useState({
     name: "Invoice paid to billing",
+    destination_id: "",
     event_type: "invoice.paid",
     priority: 100,
   });
@@ -267,6 +268,15 @@ export function Dashboard() {
       setDestinations(destinationData);
       setRoutingRules(ruleData);
       setEvents(eventData);
+      setRuleDraft((current) => ({
+        ...current,
+        destination_id: destinationData.some(
+          (destination) =>
+            destination.destination_id === current.destination_id,
+        )
+          ? current.destination_id
+          : (destinationData[0]?.destination_id ?? ""),
+      }));
       setSelectedEventId(eventData[0]?.event_id ?? "");
       setDeliveries([]);
       setSelectedDeliveryId("");
@@ -355,13 +365,13 @@ export function Dashboard() {
 
   async function createRoutingRule(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedSlug || destinations.length === 0) {
+    if (!selectedSlug || ruleDraft.destination_id === "") {
       return;
     }
     try {
       await api.createRoutingRule(selectedSlug, {
         name: ruleDraft.name,
-        destination_id: destinations[0].destination_id,
+        destination_id: ruleDraft.destination_id,
         event_type: ruleDraft.event_type,
         priority: ruleDraft.priority,
         status: "active",
@@ -934,7 +944,12 @@ function RouteSetupPage({
   };
   destinations: Destination[];
   routingRules: RoutingRule[];
-  ruleDraft: { name: string; event_type: string; priority: number };
+  ruleDraft: {
+    name: string;
+    destination_id: string;
+    event_type: string;
+    priority: number;
+  };
   selectedSlug: string;
   setDestinationDraft: Dispatch<SetStateAction<typeof destinationDraft>>;
   setRuleDraft: Dispatch<SetStateAction<typeof ruleDraft>>;
@@ -1031,6 +1046,39 @@ function RouteSetupPage({
               }
               value={ruleDraft.name}
             />
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium text-slate-700">Destination</span>
+              <select
+                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
+                disabled={destinations.length === 0}
+                onChange={(event) =>
+                  setRuleDraft((current) => ({
+                    ...current,
+                    destination_id: event.target.value,
+                  }))
+                }
+                required
+                value={ruleDraft.destination_id}
+              >
+                {destinations.length === 0 ? (
+                  <option value="">No destinations available</option>
+                ) : null}
+                {destinations.map((destination) => (
+                  <option
+                    key={destination.destination_id}
+                    value={destination.destination_id}
+                  >
+                    {destination.name} - {destination.endpoint_url}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {destinations.length === 0 ? (
+              <EmptyState
+                title="Create a destination before adding a routing rule."
+                message="Routing rules need an explicit downstream target."
+              />
+            ) : null}
             <TextInput
               label="Event type"
               onChange={(value) =>
@@ -1046,7 +1094,7 @@ function RouteSetupPage({
               value={ruleDraft.priority}
             />
             <PrimaryButton
-              disabled={!selectedSlug || destinations.length === 0}
+              disabled={!selectedSlug || ruleDraft.destination_id === ""}
             >
               Create routing rule
             </PrimaryButton>
