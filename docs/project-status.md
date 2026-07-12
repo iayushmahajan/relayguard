@@ -90,3 +90,12 @@
 - [x] Preserved database-free `make check` behavior
 - [x] Validated PostgreSQL integration checks against isolated host port `5434`
 - [ ] Authentication behavior, signature verification, background workers, frontend auth/session management, and AI execution not started
+
+## Phase 7 - Local demo receiver and sample environment
+- [x] Added standalone local downstream demo receiver on port `9000`
+- [x] Added receiver endpoints for success, retryable failure, non-retryable rejection, slow response, and health
+- [x] Added dashboard quick-fill guidance for local receiver destination URLs
+- [x] Updated Webhook Tester with richer sample invoice event defaults
+- [x] Documented the full local browser demo flow without external internet services
+- [x] Preserved database-free `make check` behavior
+- [ ] AI execution, authentication behavior, signature verification, background workers, external queues, Make.com, and n8n integrations not started

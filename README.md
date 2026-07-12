@@ -68,9 +68,10 @@ The test Compose file defaults to host port `5434` to avoid common local Postgre
 
 The health endpoint does not check PostgreSQL readiness.
 
-## Browser dashboard demo
+## Full local browser demo
 
-Run the local backend with the isolated test database, then start Vite:
+Run the local backend with the isolated test database, start Vite, and run the
+local downstream demo receiver:
 
 ```bash
 make db-test-up
@@ -80,18 +81,52 @@ cd backend
 POSTGRES_PORT=5434 .venv/bin/uvicorn app.main:app --reload
 ```
 
-In another terminal:
+In a second terminal:
 
 ```bash
 cd frontend
 npm run dev
 ```
 
+In a third terminal:
+
+```bash
+python demo/receiver.py
+```
+
 Open the Vite URL shown in the terminal, usually `http://localhost:5173`. The dev server proxies
 relative `/api` calls to `http://127.0.0.1:8000`, so the dashboard can use the backend without
 hardcoded origins.
 
+The demo receiver listens on `http://127.0.0.1:9000` and exposes:
+
+- `GET /health` - returns `200`
+- `POST /success` - returns `200` for successful delivery
+- `POST /fail` - returns `503` for retryable failure
+- `POST /reject` - returns `400` for non-retryable rejection
+- `POST /slow` - sleeps before responding to exercise timeout behavior
+
+The receiver prints only safe request metadata such as method, path, content type, body size, client
+IP, user agent, and a body SHA-256 hash. It does not log payload contents or secrets.
+
 Suggested operator demo flow:
+
+1. Confirm the backend health badge is active.
+2. Activate `stripe-sandbox`.
+3. On Route Setup, create a destination pointing to `http://127.0.0.1:9000/success`.
+4. Create an `invoice.paid` routing rule.
+5. Submit the sample demo webhook from the Webhook Tester.
+6. Select the accepted event and schedule deliveries.
+7. Execute the scheduled delivery and inspect the delivered attempt.
+8. Repeat with `http://127.0.0.1:9000/fail` to create a retry job.
+9. Repeat with `http://127.0.0.1:9000/reject` to create a dead letter, then create, approve, and
+   execute a replay request after repointing the destination to `/success`.
+10. Use `http://127.0.0.1:9000/slow` with a short destination timeout to demonstrate timeout retry
+    behavior.
+
+The browser can trigger delivery and replay APIs without any external internet service.
+
+Short browser flow without the receiver:
 
 1. Confirm the backend health badge is active.
 2. Activate `stripe-sandbox`.
@@ -101,9 +136,8 @@ Suggested operator demo flow:
 6. Execute the scheduled delivery and inspect attempts/retry jobs.
 7. If the example downstream URL fails, inspect the dead letter and create/approve/execute a replay request.
 
-The browser can trigger delivery and replay APIs, but a successful downstream delivery requires a
-reachable local or test endpoint. The included integration tests use in-process HTTP transports for
-success and failure cases without external internet.
+The included integration tests use in-process HTTP transports for success and failure cases without
+external internet.
 
 ### Webhook intake example
 
@@ -295,7 +329,10 @@ POSTGRES_PORT=5434 .venv/bin/python -m alembic upgrade head
 POSTGRES_PORT=5434 .venv/bin/python -m alembic downgrade base
 ```
 
-Phase 6 completes the browser operator dashboard MVP and minimal safe support APIs for listing integrations, toggling demo integrations, and listing recent events. Background workers, authentication behavior, signature verification, and AI execution remain deferred.
+Phase 7 adds the local demo receiver and sample browser workflow so successful delivery, retryable
+failure, non-retryable failure, dead-lettering, and replay can be demonstrated without external
+internet services. Background workers, authentication behavior, signature verification, and AI
+execution remain deferred.
 
 ## Backend seed command
 

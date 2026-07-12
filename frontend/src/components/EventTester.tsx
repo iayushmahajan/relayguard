@@ -11,19 +11,23 @@ type EventTesterProps = {
 const DEFAULT_PAYLOAD = JSON.stringify(
   {
     invoice_id: "inv_demo_001",
+    customer_id: "cus_demo_001",
     amount: 4200,
     currency: "USD",
+    paid_at: "2026-07-12T12:00:00Z",
   },
   null,
   2,
 );
+const DEFAULT_DEDUPLICATION_KEY = "demo-invoice-001";
+const DEFAULT_SOURCE_EVENT_ID = "stripe_evt_001";
 
 export function EventTester({ disabled, onSubmit }: EventTesterProps) {
   const [eventType, setEventType] = useState("invoice.paid");
   const [deduplicationKey, setDeduplicationKey] = useState(
-    `demo-${Date.now()}`,
+    DEFAULT_DEDUPLICATION_KEY,
   );
-  const [sourceEventId, setSourceEventId] = useState("");
+  const [sourceEventId, setSourceEventId] = useState(DEFAULT_SOURCE_EVENT_ID);
   const [payloadText, setPayloadText] = useState(DEFAULT_PAYLOAD);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -54,7 +58,9 @@ export function EventTester({ disabled, onSubmit }: EventTesterProps) {
         source_event_id: sourceEventId,
         payload: payload as Record<string, unknown>,
       });
-      setDeduplicationKey(`demo-${Date.now()}`);
+      const nextId = Date.now();
+      setDeduplicationKey(`demo-invoice-${nextId}`);
+      setSourceEventId(`stripe_evt_${nextId}`);
     } finally {
       setSubmitting(false);
     }

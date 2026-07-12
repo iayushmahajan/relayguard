@@ -65,6 +65,32 @@ describe("RelayGuard dashboard", () => {
     expect(screen.queryByText("Quick actions")).not.toBeInTheDocument();
   });
 
+  it("shows local demo receiver URLs and quick-fills destinations", async () => {
+    vi.stubGlobal("fetch", vi.fn(mockDashboardFetch));
+
+    render(<App />);
+
+    const navigation = await screen.findByRole("navigation", {
+      name: /Dashboard sections/i,
+    });
+    await userEvent.click(
+      within(navigation).getByRole("button", { name: "Route Setup" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /Retryable fail/i }),
+    );
+
+    expect(
+      screen.getByText("http://127.0.0.1:9000/success"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("http://127.0.0.1:9000/reject"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/Endpoint URL/i)).toHaveValue(
+      "http://127.0.0.1:9000/fail",
+    );
+  });
+
   it("keeps overview compact instead of rendering every workflow section", async () => {
     vi.stubGlobal("fetch", vi.fn(mockDashboardFetch));
 
@@ -102,6 +128,22 @@ describe("StatusBadge", () => {
 });
 
 describe("EventTester", () => {
+  it("starts with local demo sample values", () => {
+    render(<EventTester disabled={false} onSubmit={vi.fn()} />);
+
+    expect(screen.getByLabelText(/Event type/i)).toHaveValue("invoice.paid");
+    expect(screen.getByLabelText(/Deduplication key/i)).toHaveValue(
+      "demo-invoice-001",
+    );
+    expect(screen.getByLabelText(/Source event ID/i)).toHaveValue(
+      "stripe_evt_001",
+    );
+    const payloadValue = (
+      screen.getByLabelText(/Payload JSON/i) as HTMLTextAreaElement
+    ).value;
+    expect(payloadValue).toContain('"customer_id": "cus_demo_001"');
+  });
+
   it("validates JSON object payloads before submitting", async () => {
     const submit = vi.fn();
     render(<EventTester disabled={false} onSubmit={submit} />);

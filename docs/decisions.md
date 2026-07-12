@@ -203,3 +203,10 @@
 - **Rationale:** The dashboard needs these read-oriented and demo-oriented APIs to be usable from the browser. They return safe metadata only, require no schema migration, and do not expose secrets or payload contents.
 - **Date:** 2026-07-10
 - **Details:** `PATCH /api/v1/integrations/{integration_slug}` only maps `active` to `enabled=True,status=active` and `disabled` to `enabled=False,status=disabled`; it does not introduce authentication, secrets, or new integration behavior.
+
+## Entry 34
+- **Decision:** Add a standalone stdlib Python demo receiver under `demo/receiver.py` instead of extending the production backend.
+- **Rationale:** Local demos need deterministic downstream success, retryable failure, rejection, and timeout behavior without external internet services. Keeping the receiver outside the FastAPI app avoids changing production API behavior, migrations, workers, authentication, signatures, or deployment assumptions.
+- **Date:** 2026-07-12
+- **Details:** The receiver listens on port `9000` by default and exposes `/success`, `/fail`, `/reject`, `/slow`, and `/health`. It logs only safe request metadata such as method, path, content type, body size, client IP, user agent, and body SHA-256 hash; it never logs payload contents, credentials, response bodies, or secrets.
+- **Alternatives:** Adding downstream simulation to the backend or faking lifecycle data in the frontend was rejected because Phase 7 is a demo environment phase, not a production behavior or frontend simulation phase.

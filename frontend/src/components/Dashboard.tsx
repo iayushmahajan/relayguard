@@ -44,6 +44,28 @@ const NAV_ITEMS: Array<{ key: PageKey; label: string }> = [
   { key: "deliveries", label: "Deliveries" },
   { key: "recovery", label: "Recovery" },
 ];
+const DEMO_RECEIVER_URLS = [
+  {
+    label: "Success",
+    url: "http://127.0.0.1:9000/success",
+    helper: "Returns 200 and marks delivery delivered.",
+  },
+  {
+    label: "Retryable fail",
+    url: "http://127.0.0.1:9000/fail",
+    helper: "Returns 503 and creates a retry job.",
+  },
+  {
+    label: "Reject",
+    url: "http://127.0.0.1:9000/reject",
+    helper: "Returns 400 and dead-letters the delivery.",
+  },
+  {
+    label: "Slow",
+    url: "http://127.0.0.1:9000/slow",
+    helper: "Sleeps before responding to exercise timeouts.",
+  },
+];
 
 export function Dashboard() {
   const [activePage, setActivePage] = useState<PageKey>("overview");
@@ -939,6 +961,40 @@ function RouteSetupPage({
               }
               value={destinationDraft.endpoint_url}
             />
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm font-semibold text-slate-900">
+                Local demo receiver URLs
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Start `python demo/receiver.py`, then quick-fill a destination
+                to demonstrate delivery success, retry, rejection, or timeout.
+              </p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {DEMO_RECEIVER_URLS.map((target) => (
+                  <button
+                    className="rounded-md border border-slate-200 bg-white px-3 py-2 text-left transition hover:border-indigo-200 hover:bg-indigo-50"
+                    key={target.url}
+                    onClick={() =>
+                      setDestinationDraft((current) => ({
+                        ...current,
+                        endpoint_url: target.url,
+                      }))
+                    }
+                    type="button"
+                  >
+                    <span className="block text-sm font-semibold text-slate-900">
+                      {target.label}
+                    </span>
+                    <span className="block font-mono text-xs text-slate-600">
+                      {target.url}
+                    </span>
+                    <span className="mt-1 block text-xs text-slate-500">
+                      {target.helper}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="grid gap-3 md:grid-cols-2">
               <NumberInput
                 label="Timeout seconds"
