@@ -160,12 +160,27 @@ export type DestinationDraft = {
   status: "active" | "disabled";
 };
 
+export type DestinationUpdateDraft = {
+  name?: string;
+  endpoint_url?: string;
+  configuration?: Record<string, unknown>;
+  status?: "active" | "disabled";
+};
+
 export type RoutingRuleDraft = {
   name: string;
   destination_id: string;
   event_type: string;
   priority: number;
   status: "active" | "disabled";
+};
+
+export type RoutingRuleUpdateDraft = {
+  name?: string;
+  destination_id?: string;
+  event_type?: string;
+  priority?: number;
+  status?: "active" | "disabled";
 };
 
 export type WebhookDraft = {

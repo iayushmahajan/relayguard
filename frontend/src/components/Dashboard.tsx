@@ -16,6 +16,7 @@ import type {
   WebhookResult,
 } from "../lib/types";
 import { EventTester } from "./EventTester";
+import { GuidedDemo } from "./GuidedDemo";
 import { MetricCard } from "./MetricCard";
 import { EmptyState, ErrorPanel, LoadingState } from "./States";
 import { StatusBadge } from "./StatusBadge";
@@ -383,6 +384,38 @@ export function Dashboard() {
     }
   }
 
+  async function updateDestinationStatus(
+    destinationId: string,
+    status: "active" | "disabled",
+  ) {
+    if (!selectedSlug) {
+      return;
+    }
+    try {
+      await api.updateDestination(selectedSlug, destinationId, { status });
+      await refreshIntegrationScopedData(selectedSlug);
+      setToast({ tone: "success", message: `Destination ${status}.` });
+    } catch (caught) {
+      setToast({ tone: "error", message: errorMessage(caught) });
+    }
+  }
+
+  async function updateRoutingRuleStatus(
+    routingRuleId: string,
+    status: "active" | "disabled",
+  ) {
+    if (!selectedSlug) {
+      return;
+    }
+    try {
+      await api.updateRoutingRule(selectedSlug, routingRuleId, { status });
+      await refreshIntegrationScopedData(selectedSlug);
+      setToast({ tone: "success", message: `Routing rule ${status}.` });
+    } catch (caught) {
+      setToast({ tone: "error", message: errorMessage(caught) });
+    }
+  }
+
   async function submitWebhook(draft: WebhookDraft) {
     if (!selectedSlug) {
       return;
@@ -580,6 +613,8 @@ export function Dashboard() {
             selectedSlug={selectedSlug}
             setDestinationDraft={setDestinationDraft}
             setRuleDraft={setRuleDraft}
+            updateDestinationStatus={updateDestinationStatus}
+            updateRoutingRuleStatus={updateRoutingRuleStatus}
           />
         );
       case "webhook-tester":
@@ -632,9 +667,20 @@ export function Dashboard() {
         return (
           <OverviewPage
             deadLetters={deadLetters}
+            destinations={destinations}
             metrics={metrics}
+            onNavigate={setActivePage}
+            onRefreshDashboard={refreshDashboard}
+            onRefreshIntegration={() =>
+              selectedSlug
+                ? refreshIntegrationScopedData(selectedSlug)
+                : Promise.resolve()
+            }
+            onSelectDeadLetter={setSelectedDeadLetterId}
+            onSelectDelivery={setSelectedDeliveryId}
+            onSelectEvent={setSelectedEventId}
             recentActivity={recentActivity}
-            setActivePage={setActivePage}
+            selectedIntegration={selectedIntegration}
           />
         );
     }
@@ -754,11 +800,19 @@ function PageHeader({
 
 function OverviewPage({
   deadLetters,
+  destinations,
   metrics,
+  onNavigate,
+  onRefreshDashboard,
+  onRefreshIntegration,
+  onSelectDeadLetter,
+  onSelectDelivery,
+  onSelectEvent,
   recentActivity,
-  setActivePage,
+  selectedIntegration,
 }: {
   deadLetters: DeadLetter[];
+  destinations: Destination[];
   metrics: {
     events: number;
     scheduled: number;
@@ -766,16 +820,32 @@ function OverviewPage({
     openDeadLetters: number;
     pendingReplays: number;
   };
+  onNavigate: (page: PageKey) => void;
+  onRefreshDashboard: () => Promise<void>;
+  onRefreshIntegration: () => Promise<void>;
+  onSelectDeadLetter: (deadLetterId: string) => void;
+  onSelectDelivery: (deliveryId: string) => void;
+  onSelectEvent: (eventId: string) => void;
   recentActivity: Array<{
     id: string;
     label: string;
     meta: string;
     status: string;
   }>;
-  setActivePage: (page: PageKey) => void;
+  selectedIntegration: Integration | undefined;
 }) {
   return (
     <div className="grid gap-5">
+      <GuidedDemo
+        destinations={destinations}
+        onNavigate={onNavigate}
+        onRefreshDashboard={onRefreshDashboard}
+        onRefreshIntegration={onRefreshIntegration}
+        onSelectDeadLetter={onSelectDeadLetter}
+        onSelectDelivery={onSelectDelivery}
+        onSelectEvent={onSelectEvent}
+        selectedIntegration={selectedIntegration}
+      />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           label="Recent events"
@@ -845,7 +915,7 @@ function OverviewPage({
               <button
                 className="rounded-md border border-slate-200 bg-white px-3 py-2 text-left transition hover:border-indigo-200 hover:bg-indigo-50"
                 key={label}
-                onClick={() => setActivePage(page as PageKey)}
+                onClick={() => onNavigate(page as PageKey)}
                 type="button"
               >
                 <p className="text-sm font-semibold text-slate-900">{label}</p>
@@ -933,6 +1003,8 @@ function RouteSetupPage({
   selectedSlug,
   setDestinationDraft,
   setRuleDraft,
+  updateDestinationStatus,
+  updateRoutingRuleStatus,
 }: {
   createDestination: (event: FormEvent<HTMLFormElement>) => void;
   createRoutingRule: (event: FormEvent<HTMLFormElement>) => void;
@@ -953,7 +1025,22 @@ function RouteSetupPage({
   selectedSlug: string;
   setDestinationDraft: Dispatch<SetStateAction<typeof destinationDraft>>;
   setRuleDraft: Dispatch<SetStateAction<typeof ruleDraft>>;
+  updateDestinationStatus: (
+    destinationId: string,
+    status: "active" | "disabled",
+  ) => void;
+  updateRoutingRuleStatus: (
+    routingRuleId: string,
+    status: "active" | "disabled",
+  ) => void;
 }) {
+  const destinationNameById = new Map(
+    destinations.map((destination) => [
+      destination.destination_id,
+      `${destination.name} - ${destination.endpoint_url}`,
+    ]),
+  );
+
   return (
     <div className="grid gap-5">
       <div className="grid gap-5 xl:grid-cols-2">
@@ -1105,6 +1192,32 @@ function RouteSetupPage({
         <ResourceList
           empty="Create a destination to receive scheduled deliveries."
           items={destinations.map((destination) => ({
+            actions: (
+              <div className="mt-3 flex gap-2">
+                <SecondaryButton
+                  disabled={destination.status === "active"}
+                  onClick={() =>
+                    updateDestinationStatus(
+                      destination.destination_id,
+                      "active",
+                    )
+                  }
+                >
+                  Activate
+                </SecondaryButton>
+                <SecondaryButton
+                  disabled={destination.status === "disabled"}
+                  onClick={() =>
+                    updateDestinationStatus(
+                      destination.destination_id,
+                      "disabled",
+                    )
+                  }
+                >
+                  Disable
+                </SecondaryButton>
+              </div>
+            ),
             id: destination.destination_id,
             title: destination.name,
             subtitle: destination.endpoint_url,
@@ -1115,9 +1228,32 @@ function RouteSetupPage({
         <ResourceList
           empty="Create a routing rule to match accepted event types."
           items={routingRules.map((rule) => ({
+            actions: (
+              <div className="mt-3 flex gap-2">
+                <SecondaryButton
+                  disabled={rule.status === "active"}
+                  onClick={() =>
+                    updateRoutingRuleStatus(rule.routing_rule_id, "active")
+                  }
+                >
+                  Activate
+                </SecondaryButton>
+                <SecondaryButton
+                  disabled={rule.status === "disabled"}
+                  onClick={() =>
+                    updateRoutingRuleStatus(rule.routing_rule_id, "disabled")
+                  }
+                >
+                  Disable
+                </SecondaryButton>
+              </div>
+            ),
             id: rule.routing_rule_id,
             title: rule.name,
-            subtitle: `${rule.event_type} -> ${shortId(rule.destination_id)}`,
+            subtitle: `${rule.event_type} -> ${
+              destinationNameById.get(rule.destination_id) ??
+              shortId(rule.destination_id)
+            }`,
             status: rule.status,
           }))}
           title="Routing rules"
@@ -1553,7 +1689,13 @@ function ResourceList({
   title,
 }: {
   empty: string;
-  items: Array<{ id: string; title: string; subtitle: string; status: string }>;
+  items: Array<{
+    actions?: ReactNode;
+    id: string;
+    title: string;
+    subtitle: string;
+    status: string;
+  }>;
   title: string;
 }) {
   return (
@@ -1572,6 +1714,7 @@ function ResourceList({
                 <StatusBadge status={item.status} />
               </div>
               <p className="mt-2 text-xs text-slate-500">{item.subtitle}</p>
+              {item.actions ? item.actions : null}
             </div>
           ))}
         </div>

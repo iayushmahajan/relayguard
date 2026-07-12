@@ -132,6 +132,48 @@ def test_invalid_destination_endpoint_url_is_rejected(
     asyncio.run(exercise())
 
 
+def test_destination_update_changes_endpoint_status_and_configuration(
+    app: FastAPI,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async def exercise() -> None:
+        integration = await _create_integration(session_factory)
+        destination = await _create_destination(session_factory, integration.id)
+
+        async with _client(app) as client:
+            response = await client.patch(
+                f"/api/v1/integrations/{integration.slug}/destinations/{destination.id}",
+                json={
+                    "endpoint_url": "http://127.0.0.1:9000/success",
+                    "configuration": {"timeout_seconds": 2},
+                    "status": "active",
+                },
+            )
+            missing = await client.patch(
+                f"/api/v1/integrations/{integration.slug}/destinations/{uuid.uuid4()}",
+                json={"status": "active"},
+            )
+
+        assert response.status_code == 200
+        _assert_correlation_id(response)
+        _assert_correlation_id(missing)
+        assert response.json()["destination_id"] == str(destination.id)
+        assert response.json()["endpoint_url"] == "http://127.0.0.1:9000/success"
+        assert response.json()["configuration"] == {"timeout_seconds": 2}
+        assert response.json()["status"] == "active"
+        assert missing.status_code == 404
+        async with session_factory() as session:
+            stored = await session.get(models.DownstreamDestination, destination.id)
+            assert stored is not None
+            assert stored.endpoint_url == "http://127.0.0.1:9000/success"
+            assert stored.configuration == {
+                "destination_type": "http",
+                "settings": {"timeout_seconds": 2},
+            }
+
+    asyncio.run(exercise())
+
+
 def test_unknown_integration_cannot_create_routing_rule(
     app: FastAPI,
 ) -> None:
@@ -144,6 +186,49 @@ def test_unknown_integration_cannot_create_routing_rule(
 
         assert response.status_code == 404
         _assert_correlation_id(response)
+
+    asyncio.run(exercise())
+
+
+def test_routing_rule_update_changes_route_and_status(
+    app: FastAPI,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async def exercise() -> None:
+        integration = await _create_integration(session_factory)
+        first_destination = await _create_destination(session_factory, integration.id)
+        second_destination = await _create_destination(session_factory, integration.id)
+        routing_rule = await _create_routing_rule(
+            session_factory,
+            integration.id,
+            first_destination.id,
+            event_type="invoice.paid",
+        )
+
+        async with _client(app) as client:
+            response = await client.patch(
+                f"/api/v1/integrations/{integration.slug}/routing-rules/{routing_rule.id}",
+                json={
+                    "destination_id": str(second_destination.id),
+                    "event_type": "demo.success",
+                    "priority": 25,
+                    "status": "disabled",
+                },
+            )
+            missing = await client.patch(
+                f"/api/v1/integrations/{integration.slug}/routing-rules/{uuid.uuid4()}",
+                json={"status": "active"},
+            )
+
+        assert response.status_code == 200
+        _assert_correlation_id(response)
+        _assert_correlation_id(missing)
+        assert response.json()["routing_rule_id"] == str(routing_rule.id)
+        assert response.json()["destination_id"] == str(second_destination.id)
+        assert response.json()["event_type"] == "demo.success"
+        assert response.json()["priority"] == 25
+        assert response.json()["status"] == "disabled"
+        assert missing.status_code == 404
 
     asyncio.run(exercise())
 

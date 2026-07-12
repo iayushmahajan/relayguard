@@ -7,7 +7,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models
-from app.schemas.routing import RoutingRuleCreateRequest, RoutingRuleResponse
+from app.schemas.routing import (
+    RoutingRuleCreateRequest,
+    RoutingRuleResponse,
+    RoutingRuleUpdateRequest,
+)
 
 _MATCH_EVENT_TYPE = "event_type"
 
@@ -74,6 +78,55 @@ async def list_routing_rules(
         )
     ).all()
     return [_to_routing_rule_response(routing_rule) for routing_rule in routing_rules]
+
+
+async def update_routing_rule(
+    *,
+    session: AsyncSession,
+    integration_slug: str,
+    routing_rule_id: str,
+    request: RoutingRuleUpdateRequest,
+) -> RoutingRuleResponse | None:
+    """Update safe routing-rule metadata for a known integration."""
+    integration = await _get_integration_by_slug(session, integration_slug)
+    if integration is None:
+        return None
+    routing_rule = await session.scalar(
+        select(models.RoutingRule).where(
+            models.RoutingRule.id == routing_rule_id,
+            models.RoutingRule.integration_id == integration.id,
+        )
+    )
+    if routing_rule is None:
+        return None
+
+    if request.destination_id is not None:
+        destination = await session.scalar(
+            select(models.DownstreamDestination).where(
+                models.DownstreamDestination.id == request.destination_id,
+                models.DownstreamDestination.integration_id == integration.id,
+            )
+        )
+        if destination is None:
+            raise ValueError("destination not found for integration")
+        routing_rule.destination_id = destination.id
+    if request.name is not None:
+        routing_rule.name = request.name
+    if request.priority is not None:
+        routing_rule.priority = request.priority
+    if request.status is not None:
+        routing_rule.status = request.status
+    if request.event_type is not None:
+        routing_rule.match_configuration = {_MATCH_EVENT_TYPE: request.event_type}
+
+    await session.commit()
+    await session.refresh(routing_rule)
+    logger.info(
+        "routing_rule_updated",
+        integration_slug=integration.slug,
+        routing_rule_id=str(routing_rule.id),
+    )
+    return _to_routing_rule_response(routing_rule)
 
 
 def routing_rule_event_type(routing_rule: models.RoutingRule) -> str:

@@ -9,7 +9,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import models
-from app.schemas.routing import DestinationCreateRequest, DestinationResponse
+from app.schemas.routing import (
+    DestinationCreateRequest,
+    DestinationResponse,
+    DestinationUpdateRequest,
+)
 
 _CONFIG_DESTINATION_TYPE = "destination_type"
 _CONFIG_SETTINGS = "settings"
@@ -72,6 +76,50 @@ async def list_destinations(
         )
     ).all()
     return [_to_destination_response(destination) for destination in destinations]
+
+
+async def update_destination(
+    *,
+    session: AsyncSession,
+    integration_slug: str,
+    destination_id: str,
+    request: DestinationUpdateRequest,
+) -> DestinationResponse | None:
+    """Update safe destination metadata for a known integration."""
+    integration = await _get_integration_by_slug(session, integration_slug)
+    if integration is None:
+        return None
+    destination = await session.scalar(
+        select(models.DownstreamDestination).where(
+            models.DownstreamDestination.id == destination_id,
+            models.DownstreamDestination.integration_id == integration.id,
+        )
+    )
+    if destination is None:
+        return None
+    if request.configuration is not None and _contains_sensitive_key(request.configuration):
+        raise ValueError("configuration must not contain secrets")
+
+    if request.name is not None:
+        destination.name = request.name
+    if request.endpoint_url is not None:
+        destination.endpoint_url = request.endpoint_url
+    if request.status is not None:
+        destination.status = request.status
+    if request.configuration is not None:
+        destination.configuration = _pack_configuration(
+            destination_type=unpack_destination_type(destination.configuration) or "http",
+            settings=request.configuration,
+        )
+
+    await session.commit()
+    await session.refresh(destination)
+    logger.info(
+        "destination_updated",
+        integration_slug=integration.slug,
+        destination_id=str(destination.id),
+    )
+    return _to_destination_response(destination)
 
 
 async def _get_integration_by_slug(

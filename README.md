@@ -1,8 +1,8 @@
 # RelayGuard
 
-RelayGuard Phase 6 provides an operator dashboard MVP, a backend FastAPI app foundation, developer tooling, CI quality checks, process health routing, typed configuration, structured logging, request correlation IDs, lazy PostgreSQL async session infrastructure, a normalized PostgreSQL persistence foundation, idempotent baseline seeding, PostgreSQL integration validation, deterministic known-integration webhook intake, canonical accepted-event creation, duplicate detection, rejected receipt recording, safe event metadata retrieval, deterministic routing rules, downstream destination management, durable delivery scheduling records, HTTP delivery execution, retry attempt recording, durable retry jobs, dead-letter records, and a human-reviewed replay workflow for dead-letter recovery.
+RelayGuard Phase 8 provides guided browser demo automation, an operator dashboard, a local downstream demo receiver, a backend FastAPI app foundation, developer tooling, CI quality checks, process health routing, typed configuration, structured logging, request correlation IDs, lazy PostgreSQL async session infrastructure, a normalized PostgreSQL persistence foundation, idempotent baseline seeding, PostgreSQL integration validation, deterministic known-integration webhook intake, canonical accepted-event creation, duplicate detection, rejected receipt recording, safe event metadata retrieval, deterministic routing rules, downstream destination management, durable delivery scheduling records, HTTP delivery execution, retry attempt recording, durable retry jobs, dead-letter records, and a human-reviewed replay workflow for dead-letter recovery.
 
-Phase 6 intentionally includes **no startup database connection, background HTTP delivery worker, replay worker, authentication behavior, signature verification, AI execution, external queue, Redis, Celery, Kafka, or cloud service dependency**. Replay execution remains explicit API-driven recovery only.
+Phase 8 intentionally includes **no startup database connection, background HTTP delivery worker, replay worker, authentication behavior, signature verification, AI execution, external queue, Redis, Celery, Kafka, Make.com, n8n, or cloud service dependency**. Replay execution remains explicit API-driven recovery only. AI assistance is planned later for failure explanation and recovery suggestions, but it is not implemented yet.
 
 ## Prerequisites (WSL/Linux)
 
@@ -49,8 +49,10 @@ The test Compose file defaults to host port `5434` to avoid common local Postgre
 - `GET /api/v1/events/{event_id}` - safe canonical event metadata lookup
 - `POST /api/v1/integrations/{integration_slug}/destinations` - create downstream destination metadata
 - `GET /api/v1/integrations/{integration_slug}/destinations` - list downstream destination metadata
+- `PATCH /api/v1/integrations/{integration_slug}/destinations/{destination_id}` - update safe destination metadata
 - `POST /api/v1/integrations/{integration_slug}/routing-rules` - create deterministic event-type routing rule
 - `GET /api/v1/integrations/{integration_slug}/routing-rules` - list routing rules
+- `PATCH /api/v1/integrations/{integration_slug}/routing-rules/{routing_rule_id}` - update safe routing-rule metadata
 - `POST /api/v1/events/{event_id}/schedule-deliveries` - schedule durable delivery records
 - `GET /api/v1/events/{event_id}/deliveries` - list safe delivery metadata
 - `POST /api/v1/deliveries/{delivery_id}/execute` - execute one due scheduled delivery
@@ -97,6 +99,32 @@ python demo/receiver.py
 Open the Vite URL shown in the terminal, usually `http://localhost:5173`. The dev server proxies
 relative `/api` calls to `http://127.0.0.1:8000`, so the dashboard can use the backend without
 hardcoded origins.
+
+## Guided Mode vs Advanced Mode
+
+The dashboard has two operating modes:
+
+- **Guided Mode** is for recruiters, interviewers, and first-time users. It appears on Overview and
+  runs real backend API workflows for three scenarios: Successful Delivery, Temporary Failure +
+  Retry, and Permanent Failure + Recovery.
+- **Advanced Mode** keeps the manual operator pages available: Integrations, Route Setup, Webhook
+  Tester, Events, Deliveries, and Recovery.
+
+Guided Mode does not fake lifecycle state. It activates the selected demo integration, creates or
+reuses demo destinations and routing rules, submits webhooks, schedules deliveries, executes
+deliveries, and runs replay recovery through RelayGuard APIs.
+
+## 3-minute local demo
+
+1. Start the test DB, migrate, seed, backend, frontend, and receiver using the commands above.
+2. Open the dashboard and confirm the backend health badge is active.
+3. On Overview, click **Successful Delivery** to see webhook intake, routing, delivery execution,
+   and a delivered attempt.
+4. Click **Temporary Failure + Retry** to see a `503` delivery failure and a durable retry job.
+5. Click **Permanent Failure + Recovery** to see rejection, dead-lettering, replay approval,
+   destination repair to `/success`, and resolved recovery.
+6. Use Advanced Mode afterward to inspect the underlying integrations, destinations, routing rules,
+   events, deliveries, attempts, retry jobs, dead letters, and replay requests.
 
 The demo receiver listens on `http://127.0.0.1:9000` and exposes:
 
@@ -329,10 +357,10 @@ POSTGRES_PORT=5434 .venv/bin/python -m alembic upgrade head
 POSTGRES_PORT=5434 .venv/bin/python -m alembic downgrade base
 ```
 
-Phase 7 adds the local demo receiver and sample browser workflow so successful delivery, retryable
-failure, non-retryable failure, dead-lettering, and replay can be demonstrated without external
-internet services. Background workers, authentication behavior, signature verification, and AI
-execution remain deferred.
+Phase 8 adds Guided Mode automation on top of the Phase 7 local receiver so successful delivery,
+retryable failure, non-retryable failure, dead-lettering, and replay can be demonstrated without
+external internet services or manual setup. Background workers, authentication behavior, signature
+verification, Make.com/n8n integration, and AI execution remain deferred.
 
 ## Backend seed command
 

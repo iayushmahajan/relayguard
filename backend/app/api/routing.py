@@ -10,11 +10,13 @@ from app.db.session import get_async_session
 from app.schemas.routing import (
     DestinationCreateRequest,
     DestinationResponse,
+    DestinationUpdateRequest,
     RoutingRuleCreateRequest,
     RoutingRuleResponse,
+    RoutingRuleUpdateRequest,
 )
-from app.services.destinations import create_destination, list_destinations
-from app.services.routing import create_routing_rule, list_routing_rules
+from app.services.destinations import create_destination, list_destinations, update_destination
+from app.services.routing import create_routing_rule, list_routing_rules, update_routing_rule
 
 router = APIRouter(prefix="/api/v1/integrations", tags=["routing"])
 
@@ -51,6 +53,31 @@ async def list_integration_destinations(
     return destinations
 
 
+@router.patch(
+    "/{integration_slug}/destinations/{destination_id}",
+    response_model=DestinationResponse,
+)
+async def update_integration_destination(
+    integration_slug: str,
+    destination_id: str,
+    request: DestinationUpdateRequest,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+) -> DestinationResponse:
+    """Update safe downstream destination metadata for an integration."""
+    try:
+        destination = await update_destination(
+            session=session,
+            integration_slug=integration_slug,
+            destination_id=destination_id,
+            request=request,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if destination is None:
+        raise HTTPException(status_code=404, detail="destination not found")
+    return destination
+
+
 @router.post("/{integration_slug}/routing-rules", response_model=RoutingRuleResponse)
 async def create_integration_routing_rule(
     integration_slug: str,
@@ -81,3 +108,28 @@ async def list_integration_routing_rules(
     if routing_rules is None:
         raise HTTPException(status_code=404, detail="integration not found")
     return routing_rules
+
+
+@router.patch(
+    "/{integration_slug}/routing-rules/{routing_rule_id}",
+    response_model=RoutingRuleResponse,
+)
+async def update_integration_routing_rule(
+    integration_slug: str,
+    routing_rule_id: str,
+    request: RoutingRuleUpdateRequest,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+) -> RoutingRuleResponse:
+    """Update safe routing-rule metadata for an integration."""
+    try:
+        routing_rule = await update_routing_rule(
+            session=session,
+            integration_slug=integration_slug,
+            routing_rule_id=routing_rule_id,
+            request=request,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if routing_rule is None:
+        raise HTTPException(status_code=404, detail="routing rule not found")
+    return routing_rule

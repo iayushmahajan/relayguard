@@ -157,6 +157,22 @@ Configuration must not contain secrets.
 
 Returns safe destination metadata only.
 
+`PATCH /api/v1/integrations/{integration_slug}/destinations/{destination_id}`
+
+Updates safe destination metadata:
+
+```json
+{
+  "endpoint_url": "http://127.0.0.1:9000/success",
+  "configuration": {"timeout_seconds": 10},
+  "status": "active"
+}
+```
+
+Allowed fields are `name`, `endpoint_url`, `configuration`, and `status`. Unknown integrations or
+destinations return `404`. Invalid endpoint URLs or unsupported statuses are rejected. Configuration
+must not contain secrets. The response returns safe destination metadata only.
+
 ## Routing Rules
 
 `POST /api/v1/integrations/{integration_slug}/routing-rules`
@@ -179,6 +195,23 @@ Routing rules match deterministically when their stored `event_type` equals the 
 `GET /api/v1/integrations/{integration_slug}/routing-rules`
 
 Returns safe routing rule metadata sorted by priority, creation time, then stable ID.
+
+`PATCH /api/v1/integrations/{integration_slug}/routing-rules/{routing_rule_id}`
+
+Updates safe routing-rule metadata:
+
+```json
+{
+  "destination_id": "00000000-0000-0000-0000-000000000000",
+  "event_type": "demo.success",
+  "priority": 100,
+  "status": "active"
+}
+```
+
+Allowed fields are `name`, `destination_id`, `event_type`, `priority`, and `status`. The destination
+must belong to the same integration. Unknown resources return `404`; invalid destination ownership
+returns `400`. The response returns safe routing-rule metadata only.
 
 ## Delivery Scheduling
 

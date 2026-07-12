@@ -210,3 +210,11 @@
 - **Date:** 2026-07-12
 - **Details:** The receiver listens on port `9000` by default and exposes `/success`, `/fail`, `/reject`, `/slow`, and `/health`. It logs only safe request metadata such as method, path, content type, body size, client IP, user agent, and body SHA-256 hash; it never logs payload contents, credentials, response bodies, or secrets.
 - **Alternatives:** Adding downstream simulation to the backend or faking lifecycle data in the frontend was rejected because Phase 7 is a demo environment phase, not a production behavior or frontend simulation phase.
+
+## Entry 35
+- **Decision:** Add deterministic Guided Mode automation before starting AI work.
+- **Rationale:** First-time users need to understand the reliability lifecycle before any AI assistance is useful. Guided scenarios can run the real webhook, routing, delivery, retry, dead-letter, and replay APIs while explaining each step in plain language.
+- **Date:** 2026-07-12
+- **Details:** Guided Mode creates or reuses stable demo destinations and routing rules, submits unique demo webhooks, schedules and executes deliveries, and performs replay recovery through normal backend APIs. It avoids duplicate setup by reusing or safely updating existing demo configuration.
+- **AI boundary:** Phase 8 automation is deterministic application behavior. Future AI may explain failures and suggest recovery actions, but no AI execution, classification, or recommendation behavior is implemented in this phase.
+- **Backend support:** Safe `PATCH` endpoints for destinations and routing rules were added so the guided recovery scenario can repair a destination endpoint and so demo setup can reactivate/update existing configuration without schema changes.

@@ -6,6 +6,7 @@ import type {
   DeliveryScheduleResult,
   Destination,
   DestinationDraft,
+  DestinationUpdateDraft,
   EventMetadata,
   HealthResponse,
   Integration,
@@ -15,6 +16,7 @@ import type {
   RetryJob,
   RoutingRule,
   RoutingRuleDraft,
+  RoutingRuleUpdateDraft,
   WebhookDraft,
   WebhookResult,
 } from "./types";
@@ -88,6 +90,18 @@ export const api = {
         status: draft.status,
       },
     }),
+  updateDestination: (
+    slug: string,
+    destinationId: string,
+    draft: DestinationUpdateDraft,
+  ) =>
+    request<Destination>(
+      `/integrations/${slug}/destinations/${destinationId}`,
+      {
+        method: "PATCH",
+        body: draft,
+      },
+    ),
   listRoutingRules: (slug: string) =>
     request<RoutingRule[]>(`/integrations/${slug}/routing-rules`),
   createRoutingRule: (slug: string, draft: RoutingRuleDraft) =>
@@ -95,6 +109,18 @@ export const api = {
       method: "POST",
       body: draft,
     }),
+  updateRoutingRule: (
+    slug: string,
+    routingRuleId: string,
+    draft: RoutingRuleUpdateDraft,
+  ) =>
+    request<RoutingRule>(
+      `/integrations/${slug}/routing-rules/${routingRuleId}`,
+      {
+        method: "PATCH",
+        body: draft,
+      },
+    ),
   submitWebhook: (slug: string, draft: WebhookDraft) =>
     request<WebhookResult>(`/integrations/${slug}/webhooks`, {
       method: "POST",

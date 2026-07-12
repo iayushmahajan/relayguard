@@ -99,3 +99,15 @@
 - [x] Documented the full local browser demo flow without external internet services
 - [x] Preserved database-free `make check` behavior
 - [ ] AI execution, authentication behavior, signature verification, background workers, external queues, Make.com, and n8n integrations not started
+
+## Phase 8 - Guided demo automation and product onboarding
+- [x] Added Guided Mode on Overview with deterministic onboarding copy
+- [x] Added guided scenarios for successful delivery, temporary failure with retry, and permanent failure with replay recovery
+- [x] Added scenario timeline states for not started, running, completed, and failed steps
+- [x] Automated demo setup through real backend APIs without fake lifecycle state
+- [x] Added safe destination and routing-rule update support for guided reuse and recovery
+- [x] Preserved Advanced Mode manual dashboard controls and added destination/routing-rule status toggles
+- [x] Added frontend tests for guided panel rendering, scenario execution, duplicate-safe setup, and recovery steps
+- [x] Added backend tests for safe destination and routing-rule updates
+- [x] Preserved database-free `make check` behavior
+- [ ] AI execution, authentication behavior, signature verification, background workers, external queues, Make.com, and n8n integrations not started

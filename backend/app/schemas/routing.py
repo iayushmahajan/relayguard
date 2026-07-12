@@ -57,6 +57,52 @@ class DestinationCreateRequest(BaseModel):
         return value
 
 
+class DestinationUpdateRequest(BaseModel):
+    """Request body for updating safe destination metadata."""
+
+    name: StrictStr | None = Field(default=None, max_length=200)
+    endpoint_url: StrictStr | None = None
+    configuration: dict[str, Any] | None = None
+    status: StrictStr | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("name", "status", mode="before")
+    @classmethod
+    def trim_string(cls, value: object) -> object:
+        """Trim string fields before validation."""
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+    @field_validator("name")
+    @classmethod
+    def reject_empty_name(cls, value: str | None) -> str | None:
+        """Reject empty names."""
+        if value == "":
+            raise ValueError("must not be empty")
+        return value
+
+    @field_validator("endpoint_url")
+    @classmethod
+    def validate_endpoint_url(cls, value: str | None) -> str | None:
+        """Require an HTTP or HTTPS URL when provided."""
+        if value is None:
+            return value
+        parsed = urlparse(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("must be a valid http or https URL")
+        return value
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, value: str | None) -> str | None:
+        """Allow only active or disabled destination statuses."""
+        if value is not None and value not in _ALLOWED_STATUS:
+            raise ValueError("must be active or disabled")
+        return value
+
+
 class DestinationResponse(BaseModel):
     """Safe downstream destination metadata."""
 
@@ -103,6 +149,42 @@ class RoutingRuleCreateRequest(BaseModel):
     def validate_status(cls, value: str) -> str:
         """Allow only Phase 3 routing-rule statuses."""
         if value not in _ALLOWED_STATUS:
+            raise ValueError("must be active or disabled")
+        return value
+
+
+class RoutingRuleUpdateRequest(BaseModel):
+    """Request body for updating safe routing-rule metadata."""
+
+    name: StrictStr | None = Field(default=None, max_length=200)
+    destination_id: UUID | None = None
+    event_type: StrictStr | None = Field(default=None, max_length=255)
+    priority: int | None = None
+    status: StrictStr | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("name", "event_type", "status", mode="before")
+    @classmethod
+    def trim_string(cls, value: object) -> object:
+        """Trim string fields before validation."""
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+    @field_validator("name", "event_type")
+    @classmethod
+    def reject_empty_string(cls, value: str | None) -> str | None:
+        """Reject empty strings when provided."""
+        if value == "":
+            raise ValueError("must not be empty")
+        return value
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, value: str | None) -> str | None:
+        """Allow only active or disabled routing-rule statuses."""
+        if value is not None and value not in _ALLOWED_STATUS:
             raise ValueError("must be active or disabled")
         return value
 

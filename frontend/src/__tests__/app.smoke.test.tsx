@@ -91,6 +91,97 @@ describe("RelayGuard dashboard", () => {
     );
   });
 
+  it("renders guided demo scenarios", async () => {
+    vi.stubGlobal("fetch", vi.fn(mockDashboardFetch));
+
+    render(<App />);
+
+    expect(await screen.findByText("Guided Mode")).toBeInTheDocument();
+    expect(
+      screen.getByText(/RelayGuard receives webhook events/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Successful Delivery/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Temporary Failure \+ Retry/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Permanent Failure \+ Recovery/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("runs the successful guided scenario through real API calls", async () => {
+    const fetchMock = vi.fn(createGuidedDemoFetch({ existingSetup: false }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Successful Delivery/i }),
+    );
+
+    expect(
+      await screen.findByText(/Webhook received -> event created/i),
+    ).toBeInTheDocument();
+    expectSubsequence(getFetchOperations(fetchMock), [
+      "POST /api/v1/integrations/stripe-sandbox/destinations",
+      "POST /api/v1/integrations/stripe-sandbox/routing-rules",
+      "POST /api/v1/integrations/stripe-sandbox/webhooks",
+      "POST /api/v1/events/event-success/schedule-deliveries",
+      "POST /api/v1/deliveries/delivery-success/execute",
+    ]);
+  });
+
+  it("reuses existing guided demo setup without duplicate destination or rule creation", async () => {
+    const fetchMock = vi.fn(createGuidedDemoFetch({ existingSetup: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /Successful Delivery/i }),
+    );
+
+    expect(await screen.findByText(/attempt succeeded/i)).toBeInTheDocument();
+    const operations = getFetchOperations(fetchMock);
+    expect(operations).not.toContain(
+      "POST /api/v1/integrations/stripe-sandbox/destinations",
+    );
+    expect(operations).not.toContain(
+      "POST /api/v1/integrations/stripe-sandbox/routing-rules",
+    );
+    expect(operations).toContain(
+      "POST /api/v1/integrations/stripe-sandbox/webhooks",
+    );
+  });
+
+  it("shows recovery replay steps in the guided recovery scenario", async () => {
+    const fetchMock = vi.fn(createGuidedDemoFetch({ existingSetup: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: /Permanent Failure \+ Recovery/i,
+      }),
+    );
+
+    expect(
+      await screen.findByText(/Create and approve replay/i),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Replay requested -> approved/i),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText(/delivery rejected -> dead letter created/i),
+    ).toBeInTheDocument();
+    expect(getFetchOperations(fetchMock)).toContain(
+      "POST /api/v1/replay-requests/replay-recovery/execute",
+    );
+  });
+
   it("blocks routing rule creation until a destination exists", async () => {
     vi.stubGlobal("fetch", vi.fn(mockDashboardFetch));
 
@@ -354,4 +445,347 @@ function mockDashboardFetchWithDestinations(
       },
     ),
   );
+}
+
+function createGuidedDemoFetch({ existingSetup }: { existingSetup: boolean }) {
+  const destinations = existingSetup
+    ? [
+        destinationFixture(
+          "destination-success",
+          "Success Receiver",
+          "http://127.0.0.1:9000/success",
+        ),
+        destinationFixture(
+          "destination-recovery",
+          "Reject Receiver",
+          "http://127.0.0.1:9000/reject",
+        ),
+      ]
+    : [];
+  const routingRules = existingSetup
+    ? [
+        routingRuleFixture(
+          "rule-success",
+          "Demo Success Route",
+          "demo.success",
+          "destination-success",
+        ),
+        routingRuleFixture(
+          "rule-recovery",
+          "Demo Recovery Route",
+          "demo.recovery",
+          "destination-recovery",
+        ),
+      ]
+    : [];
+  const deliveries: Record<string, unknown[]> = {
+    "event-success": [
+      deliveryFixture(
+        "delivery-success",
+        "event-success",
+        "destination-success",
+        "rule-success",
+      ),
+    ],
+    "event-recovery": [
+      deliveryFixture(
+        "delivery-recovery",
+        "event-recovery",
+        "destination-recovery",
+        "rule-recovery",
+      ),
+    ],
+  };
+  const deadLetters: unknown[] = [];
+  const replayRequests: unknown[] = [];
+
+  return (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input.toString();
+    const method = init?.method ?? "GET";
+
+    if (url.endsWith("/health")) {
+      return jsonResponse({ status: "ok" });
+    }
+    if (url.endsWith("/integrations")) {
+      return jsonResponse([integrationFixture()]);
+    }
+    if (url.endsWith("/destinations") && method === "GET") {
+      return jsonResponse(destinations);
+    }
+    if (url.endsWith("/destinations") && method === "POST") {
+      const body = JSON.parse(String(init?.body));
+      const destination = destinationFixture(
+        body.name === "Success Receiver"
+          ? "destination-success"
+          : "destination-recovery",
+        body.name,
+        body.endpoint_url,
+      );
+      destinations.push(destination);
+      return jsonResponse(destination, 201);
+    }
+    if (url.includes("/destinations/") && method === "PATCH") {
+      const destinationId = url.split("/").at(-1);
+      const body = JSON.parse(String(init?.body));
+      const destination = destinations.find(
+        (candidate) => candidate.destination_id === destinationId,
+      );
+      Object.assign(destination ?? {}, {
+        endpoint_url: body.endpoint_url ?? destination?.endpoint_url,
+        status: body.status ?? destination?.status,
+      });
+      return jsonResponse(destination);
+    }
+    if (url.endsWith("/routing-rules") && method === "GET") {
+      return jsonResponse(routingRules);
+    }
+    if (url.endsWith("/routing-rules") && method === "POST") {
+      const body = JSON.parse(String(init?.body));
+      const rule = routingRuleFixture(
+        body.event_type === "demo.success" ? "rule-success" : "rule-recovery",
+        body.name,
+        body.event_type,
+        body.destination_id,
+      );
+      routingRules.push(rule);
+      return jsonResponse(rule, 201);
+    }
+    if (url.includes("/routing-rules/") && method === "PATCH") {
+      const routingRuleId = url.split("/").at(-1);
+      const body = JSON.parse(String(init?.body));
+      const rule = routingRules.find(
+        (candidate) => candidate.routing_rule_id === routingRuleId,
+      );
+      Object.assign(rule ?? {}, {
+        destination_id: body.destination_id ?? rule?.destination_id,
+        event_type: body.event_type ?? rule?.event_type,
+        priority: body.priority ?? rule?.priority,
+        status: body.status ?? rule?.status,
+      });
+      return jsonResponse(rule);
+    }
+    if (url.includes("/webhooks") && method === "POST") {
+      const body = JSON.parse(String(init?.body));
+      const key = body.event_type === "demo.recovery" ? "recovery" : "success";
+      return jsonResponse(
+        {
+          receipt_id: `receipt-${key}`,
+          event_id: `event-${key}`,
+          status: "accepted",
+          duplicate: false,
+        },
+        202,
+      );
+    }
+    if (url.includes("/schedule-deliveries") && method === "POST") {
+      const eventId = url.split("/").at(-2) ?? "event-success";
+      return jsonResponse({
+        event_id: eventId,
+        status: "accepted",
+        scheduled_count: 1,
+        already_scheduled_count: 0,
+      });
+    }
+    if (url.includes("/events/") && url.endsWith("/deliveries")) {
+      const eventId = url.split("/").at(-2) ?? "event-success";
+      return jsonResponse(deliveries[eventId] ?? []);
+    }
+    if (url.endsWith("/execute") && url.includes("/deliveries/")) {
+      const deliveryId = url.split("/").at(-2);
+      if (deliveryId === "delivery-recovery") {
+        deadLetters.push({
+          dead_letter_id: "dead-letter-recovery",
+          delivery_id: "delivery-recovery",
+          severity: "high",
+          reason_code: "http_400",
+          reason_message: "Rejected",
+          resolution_status: "open",
+          dead_lettered_at: "2026-07-12T00:00:00Z",
+          resolved_at: null,
+          created_at: "2026-07-12T00:00:00Z",
+          updated_at: "2026-07-12T00:00:00Z",
+        });
+        return jsonResponse({
+          delivery_id: deliveryId,
+          status: "dead_lettered",
+          attempt_number: 1,
+          retry_scheduled: false,
+          dead_lettered: true,
+          next_attempt_at: null,
+        });
+      }
+      return jsonResponse({
+        delivery_id: deliveryId,
+        status: "delivered",
+        attempt_number: 1,
+        retry_scheduled: false,
+        dead_lettered: false,
+        next_attempt_at: null,
+      });
+    }
+    if (url.includes("/attempts")) {
+      return jsonResponse([
+        {
+          attempt_id: "attempt-success",
+          delivery_id: "delivery-success",
+          attempt_number: 1,
+          outcome: "succeeded",
+          response_status_code: 200,
+          error_code: null,
+          error_message: null,
+          is_retryable: false,
+          started_at: "2026-07-12T00:00:00Z",
+          finished_at: "2026-07-12T00:00:00Z",
+          created_at: "2026-07-12T00:00:00Z",
+        },
+      ]);
+    }
+    if (url.includes("/retry-jobs")) {
+      return jsonResponse([]);
+    }
+    if (url.endsWith("/dead-letters") && method === "GET") {
+      return jsonResponse(deadLetters);
+    }
+    if (url.includes("/dead-letters/") && url.endsWith("/replay-requests")) {
+      const replay = {
+        replay_request_id: "replay-recovery",
+        status: "pending",
+        event_id: "event-recovery",
+        delivery_id: "delivery-recovery",
+        dead_letter_id: "dead-letter-recovery",
+        reason: "Downstream was repaired during the guided demo.",
+        requested_by: "guided-demo",
+        approved_by: null,
+        rejected_by: null,
+        created_at: "2026-07-12T00:00:00Z",
+        updated_at: "2026-07-12T00:00:00Z",
+        executed_at: null,
+        resolved_at: null,
+      };
+      replayRequests.push(replay);
+      return jsonResponse(replay, 201);
+    }
+    if (url.endsWith("/replay-requests") && method === "GET") {
+      return jsonResponse(replayRequests);
+    }
+    if (url.includes("/replay-requests/") && url.endsWith("/approve")) {
+      const replay = replayRequests[0] as Record<string, unknown>;
+      replay.status = "approved";
+      replay.approved_by = "guided-demo";
+      return jsonResponse(replay);
+    }
+    if (url.includes("/replay-requests/") && url.endsWith("/execute")) {
+      const replay = replayRequests[0] as Record<string, unknown>;
+      replay.status = "resolved";
+      const deadLetter = deadLetters[0] as Record<string, unknown>;
+      deadLetter.resolution_status = "resolved";
+      return jsonResponse({
+        replay_request_id: "replay-recovery",
+        delivery_id: "delivery-recovery",
+        replay_status: "resolved",
+        delivery_status: "delivered",
+        attempt_recorded: true,
+        dead_letter_resolved: true,
+      });
+    }
+    if (url.includes("/events")) {
+      return jsonResponse([]);
+    }
+    return jsonResponse({});
+  };
+}
+
+function getFetchOperations(fetchMock: ReturnType<typeof vi.fn>) {
+  return fetchMock.mock.calls.map(([input, init]) => {
+    const url = typeof input === "string" ? input : input.toString();
+    const path = url.startsWith("http") ? new URL(url).pathname : url;
+    return `${init?.method ?? "GET"} ${path}`;
+  });
+}
+
+function expectSubsequence(operations: string[], expected: string[]) {
+  let cursor = 0;
+  for (const operation of operations) {
+    if (operation === expected[cursor]) {
+      cursor += 1;
+    }
+  }
+  expect(cursor).toBe(expected.length);
+}
+
+function jsonResponse(body: unknown, status = 200) {
+  return Promise.resolve(
+    new Response(JSON.stringify(body), {
+      headers: { "Content-Type": "application/json" },
+      status,
+    }),
+  );
+}
+
+function integrationFixture() {
+  return {
+    integration_id: "11111111-1111-4111-8111-111111111111",
+    slug: "stripe-sandbox",
+    name: "Stripe Sandbox",
+    status: "active",
+    enabled: true,
+    created_at: "2026-07-10T00:00:00Z",
+    updated_at: "2026-07-10T00:00:00Z",
+  };
+}
+
+function destinationFixture(
+  destinationId: string,
+  name: string,
+  endpointUrl: string,
+) {
+  return {
+    destination_id: destinationId,
+    integration_id: "11111111-1111-4111-8111-111111111111",
+    name,
+    destination_type: "http",
+    endpoint_url: endpointUrl,
+    configuration: {},
+    status: "active",
+    created_at: "2026-07-10T00:00:00Z",
+    updated_at: "2026-07-10T00:00:00Z",
+  };
+}
+
+function routingRuleFixture(
+  routingRuleId: string,
+  name: string,
+  eventType: string,
+  destinationId: string,
+) {
+  return {
+    routing_rule_id: routingRuleId,
+    integration_id: "11111111-1111-4111-8111-111111111111",
+    destination_id: destinationId,
+    name,
+    event_type: eventType,
+    priority: 100,
+    status: "active",
+    created_at: "2026-07-10T00:00:00Z",
+    updated_at: "2026-07-10T00:00:00Z",
+  };
+}
+
+function deliveryFixture(
+  deliveryId: string,
+  eventId: string,
+  destinationId: string,
+  routingRuleId: string,
+) {
+  return {
+    delivery_id: deliveryId,
+    event_id: eventId,
+    destination_id: destinationId,
+    routing_rule_id: routingRuleId,
+    status: "scheduled",
+    next_attempt_at: "2026-07-12T00:00:00Z",
+    attempt_count: 0,
+    created_at: "2026-07-12T00:00:00Z",
+    updated_at: "2026-07-12T00:00:00Z",
+  };
 }
