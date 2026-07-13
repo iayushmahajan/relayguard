@@ -3,15 +3,18 @@ import type { Dispatch, FormEvent, ReactNode, SetStateAction } from "react";
 
 import { api, ApiError } from "../lib/api";
 import type {
+  DeliveryExplanation,
   DeadLetter,
   Delivery,
   DeliveryAttempt,
   Destination,
   EventMetadata,
   Integration,
+  ReplayNoteDraft,
   ReplayRequest,
   RetryJob,
   RoutingRule,
+  SampleWebhookPayload,
   WebhookDraft,
   WebhookResult,
 } from "../lib/types";
@@ -87,6 +90,17 @@ export function Dashboard() {
   const [deadLetters, setDeadLetters] = useState<DeadLetter[]>([]);
   const [selectedDeadLetterId, setSelectedDeadLetterId] = useState("");
   const [replayRequests, setReplayRequests] = useState<ReplayRequest[]>([]);
+  const [deliveryExplanation, setDeliveryExplanation] =
+    useState<DeliveryExplanation | null>(null);
+  const [deliveryExplanationLoading, setDeliveryExplanationLoading] =
+    useState(false);
+  const [deliveryExplanationError, setDeliveryExplanationError] = useState<
+    string | null
+  >(null);
+  const [replayNoteDraft, setReplayNoteDraft] =
+    useState<ReplayNoteDraft | null>(null);
+  const [replayNoteLoading, setReplayNoteLoading] = useState(false);
+  const [replayNoteError, setReplayNoteError] = useState<string | null>(null);
   const [recentWebhookResults, setRecentWebhookResults] = useState<
     WebhookResult[]
   >([]);
@@ -212,6 +226,8 @@ export function Dashboard() {
 
   useEffect(() => {
     if (selectedDeliveryId !== "") {
+      setDeliveryExplanation(null);
+      setDeliveryExplanationError(null);
       void refreshDeliveryData(selectedDeliveryId);
     }
   }, [selectedDeliveryId]);
@@ -221,6 +237,11 @@ export function Dashboard() {
       setSelectedDeadLetterId(deadLetters[0].dead_letter_id);
     }
   }, [deadLetters, selectedDeadLetterId]);
+
+  useEffect(() => {
+    setReplayNoteDraft(null);
+    setReplayNoteError(null);
+  }, [selectedDeadLetterId]);
 
   async function refreshDashboard() {
     setLoading(true);
@@ -593,6 +614,38 @@ export function Dashboard() {
     }
   }
 
+  async function explainSelectedDelivery() {
+    if (!selectedDeliveryId) {
+      return;
+    }
+    setDeliveryExplanationLoading(true);
+    setDeliveryExplanationError(null);
+    try {
+      const explanation = await api.explainDelivery(selectedDeliveryId);
+      setDeliveryExplanation(explanation);
+    } catch (caught) {
+      setDeliveryExplanationError(errorMessage(caught));
+    } finally {
+      setDeliveryExplanationLoading(false);
+    }
+  }
+
+  async function draftReplayNoteForSelectedDeadLetter() {
+    if (!selectedDeadLetterId) {
+      return;
+    }
+    setReplayNoteLoading(true);
+    setReplayNoteError(null);
+    try {
+      const draft = await api.draftReplayNote(selectedDeadLetterId);
+      setReplayNoteDraft(draft);
+    } catch (caught) {
+      setReplayNoteError(errorMessage(caught));
+    } finally {
+      setReplayNoteLoading(false);
+    }
+  }
+
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <Sidebar activePage={activePage} onNavigate={setActivePage} />
@@ -674,9 +727,13 @@ export function Dashboard() {
         return (
           <DeliveriesPage
             attempts={attempts}
+            deliveryExplanation={deliveryExplanation}
+            deliveryExplanationError={deliveryExplanationError}
+            deliveryExplanationLoading={deliveryExplanationLoading}
             deliveries={deliveries}
             executeDelivery={executeSelectedDelivery}
             executeRetryJob={executeRetryJob}
+            explainDelivery={explainSelectedDelivery}
             retryJobs={retryJobs}
             selectedDelivery={selectedDelivery}
             setSelectedDeliveryId={setSelectedDeliveryId}
@@ -689,8 +746,12 @@ export function Dashboard() {
             approveReplayRequest={approveReplayRequest}
             createReplayRequest={createReplayRequest}
             deadLetters={deadLetters}
+            draftReplayNote={draftReplayNoteForSelectedDeadLetter}
             executeReplayRequest={executeReplayRequest}
             rejectReplayRequest={rejectReplayRequest}
+            replayNoteDraft={replayNoteDraft}
+            replayNoteError={replayNoteError}
+            replayNoteLoading={replayNoteLoading}
             replayRequests={replayRequests}
             selectedDeadLetter={selectedDeadLetter}
             setSelectedDeadLetterId={setSelectedDeadLetterId}
@@ -1310,50 +1371,163 @@ function WebhookTesterPage({
   setActivePage: (page: PageKey) => void;
   setSelectedEventId: (eventId: string) => void;
 }) {
+  const [sampleEventType, setSampleEventType] = useState("invoice.paid");
+  const [sampleDescription, setSampleDescription] = useState(
+    "A paid invoice event for a European customer",
+  );
+  const [generatedSample, setGeneratedSample] =
+    useState<SampleWebhookPayload | null>(null);
+  const [insertedSample, setInsertedSample] = useState<WebhookDraft | null>(
+    null,
+  );
+  const [insertedSampleVersion, setInsertedSampleVersion] = useState(0);
+  const [sampleLoading, setSampleLoading] = useState(false);
+  const [sampleError, setSampleError] = useState<string | null>(null);
+
+  async function generateSample() {
+    setSampleLoading(true);
+    setSampleError(null);
+    try {
+      const sample = await api.sampleWebhookPayload(
+        sampleEventType,
+        sampleDescription,
+        selectedIntegration?.slug,
+      );
+      setGeneratedSample(sample);
+    } catch (caught) {
+      setSampleError(errorMessage(caught));
+    } finally {
+      setSampleLoading(false);
+    }
+  }
+
+  function insertGeneratedSample() {
+    if (!generatedSample) {
+      return;
+    }
+    setInsertedSample({
+      event_type: generatedSample.event_type,
+      deduplication_key: generatedSample.deduplication_key,
+      source_event_id: generatedSample.source_event_id,
+      payload: generatedSample.payload,
+    });
+    setInsertedSampleVersion((current) => current + 1);
+  }
+
   return (
-    <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-      <Panel title="Submit demo event">
-        <EventTester
-          disabled={
-            !selectedIntegration || selectedIntegration.status !== "active"
-          }
-          onSubmit={onSubmit}
-        />
-      </Panel>
-      <Panel title="Response panel">
-        {recentWebhookResults.length === 0 ? (
-          <EmptyState
-            title="No submissions yet"
-            message="Submit a webhook to see accepted or duplicate responses."
-          />
-        ) : (
-          <div className="grid gap-3">
-            {recentWebhookResults.map((result) => (
-              <button
-                className="rounded-lg border border-slate-200 bg-white p-3 text-left transition hover:border-indigo-300 hover:bg-indigo-50"
-                key={result.receipt_id}
-                onClick={() => {
-                  setSelectedEventId(result.event_id);
-                  setActivePage("events");
-                }}
-                type="button"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <span className="font-mono text-xs text-slate-600">
-                    {shortId(result.event_id)}
-                  </span>
-                  <StatusBadge
-                    status={result.duplicate ? "duplicate" : result.status}
-                  />
-                </div>
-                <p className="mt-2 text-xs text-slate-500">
-                  receipt {shortId(result.receipt_id)}
-                </p>
-              </button>
-            ))}
+    <div className="grid gap-5">
+      <Panel title="AI Assistant">
+        <div className="grid gap-4 xl:grid-cols-[0.85fr_1.15fr]">
+          <div>
+            <p className="text-sm text-slate-600">
+              AI assists with explanations, drafts, and sample payloads.
+              RelayGuard&apos;s routing, retry, delivery, and replay decisions
+              remain deterministic.
+            </p>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <TextInput
+                label="Sample event type"
+                onChange={setSampleEventType}
+                value={sampleEventType}
+              />
+              <TextInput
+                label="Sample description"
+                onChange={setSampleDescription}
+                value={sampleDescription}
+              />
+            </div>
+            <PrimaryButton disabled={sampleLoading} onClick={generateSample}>
+              {sampleLoading ? "Generating..." : "Generate sample payload"}
+            </PrimaryButton>
+            {sampleError ? (
+              <p className="mt-3 text-sm text-rose-700">{sampleError}</p>
+            ) : null}
           </div>
-        )}
+          <div>
+            {generatedSample ? (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-slate-900">
+                    Generated sample
+                  </p>
+                  <StatusBadge status={generatedSample.mode} />
+                </div>
+                {generatedSample.mode === "fallback" ? (
+                  <p className="mt-2 text-xs text-slate-500">
+                    Local fallback mode. No external AI provider was used.
+                  </p>
+                ) : null}
+                <pre className="mt-3 max-h-56 overflow-auto rounded-md bg-white p-3 text-xs text-slate-700">
+                  {JSON.stringify(
+                    {
+                      event_type: generatedSample.event_type,
+                      deduplication_key: generatedSample.deduplication_key,
+                      source_event_id: generatedSample.source_event_id,
+                      payload: generatedSample.payload,
+                    },
+                    null,
+                    2,
+                  )}
+                </pre>
+                <SecondaryButton onClick={insertGeneratedSample}>
+                  Insert into tester
+                </SecondaryButton>
+              </div>
+            ) : (
+              <EmptyState
+                title="No generated sample"
+                message="Generate a sample, inspect it, then insert it into the tester."
+              />
+            )}
+          </div>
+        </div>
       </Panel>
+      <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+        <Panel title="Submit demo event">
+          <EventTester
+            disabled={
+              !selectedIntegration || selectedIntegration.status !== "active"
+            }
+            onSubmit={onSubmit}
+            suggestedDraft={insertedSample}
+            suggestedDraftVersion={insertedSampleVersion}
+          />
+        </Panel>
+        <Panel title="Response panel">
+          {recentWebhookResults.length === 0 ? (
+            <EmptyState
+              title="No submissions yet"
+              message="Submit a webhook to see accepted or duplicate responses."
+            />
+          ) : (
+            <div className="grid gap-3">
+              {recentWebhookResults.map((result) => (
+                <button
+                  className="rounded-lg border border-slate-200 bg-white p-3 text-left transition hover:border-indigo-300 hover:bg-indigo-50"
+                  key={result.receipt_id}
+                  onClick={() => {
+                    setSelectedEventId(result.event_id);
+                    setActivePage("events");
+                  }}
+                  type="button"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-mono text-xs text-slate-600">
+                      {shortId(result.event_id)}
+                    </span>
+                    <StatusBadge
+                      status={result.duplicate ? "duplicate" : result.status}
+                    />
+                  </div>
+                  <p className="mt-2 text-xs text-slate-500">
+                    receipt {shortId(result.receipt_id)}
+                  </p>
+                </button>
+              ))}
+            </div>
+          )}
+        </Panel>
+      </div>
     </div>
   );
 }
@@ -1430,17 +1604,25 @@ function EventsPage({
 
 function DeliveriesPage({
   attempts,
+  deliveryExplanation,
+  deliveryExplanationError,
+  deliveryExplanationLoading,
   deliveries,
   executeDelivery,
   executeRetryJob,
+  explainDelivery,
   retryJobs,
   selectedDelivery,
   setSelectedDeliveryId,
 }: {
   attempts: DeliveryAttempt[];
+  deliveryExplanation: DeliveryExplanation | null;
+  deliveryExplanationError: string | null;
+  deliveryExplanationLoading: boolean;
   deliveries: Delivery[];
   executeDelivery: () => void;
   executeRetryJob: (retryJobId: string) => void;
+  explainDelivery: () => void;
   retryJobs: RetryJob[];
   selectedDelivery: Delivery | undefined;
   setSelectedDeliveryId: (deliveryId: string) => void;
@@ -1519,6 +1701,18 @@ function DeliveriesPage({
               >
                 Execute delivery
               </PrimaryButton>
+              <SecondaryButton
+                disabled={
+                  !["failed", "dead_lettered"].includes(
+                    selectedDelivery.status,
+                  ) || deliveryExplanationLoading
+                }
+                onClick={explainDelivery}
+              >
+                {deliveryExplanationLoading
+                  ? "Explaining..."
+                  : "Explain failure"}
+              </SecondaryButton>
             </div>
           ) : (
             <EmptyState
@@ -1528,6 +1722,54 @@ function DeliveriesPage({
           )}
         </Panel>
       </div>
+      <Panel title="AI Assistant">
+        <p className="text-sm text-slate-600">
+          AI assists with explanations only. RelayGuard&apos;s delivery status,
+          retry classification, and dead-letter decisions remain deterministic.
+        </p>
+        {deliveryExplanationError ? (
+          <p className="mt-3 text-sm text-rose-700">
+            {deliveryExplanationError}
+          </p>
+        ) : null}
+        {deliveryExplanation ? (
+          <div className="mt-4 grid gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusBadge status={deliveryExplanation.mode} />
+              <StatusBadge status={deliveryExplanation.risk_level} />
+            </div>
+            {deliveryExplanation.mode === "fallback" ? (
+              <p className="text-xs text-slate-500">
+                Local fallback mode. No external AI provider was used.
+              </p>
+            ) : null}
+            <KeyValue label="Summary" value={deliveryExplanation.summary} />
+            <KeyValue
+              label="Likely cause"
+              value={deliveryExplanation.likely_cause}
+            />
+            <KeyValue
+              label="Recommended action"
+              value={deliveryExplanation.recommended_action}
+            />
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Supporting facts
+              </p>
+              <ul className="mt-2 grid gap-1 text-sm text-slate-700">
+                {deliveryExplanation.supporting_facts.map((fact) => (
+                  <li key={fact}>{fact}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        ) : (
+          <EmptyState
+            title="No explanation yet"
+            message="Select a failed or dead-lettered delivery, then ask for a metadata-only explanation."
+          />
+        )}
+      </Panel>
       <div className="grid gap-5 xl:grid-cols-2">
         <Panel title="Attempts">
           {attempts.length === 0 ? (
@@ -1602,8 +1844,12 @@ function RecoveryPage({
   approveReplayRequest,
   createReplayRequest,
   deadLetters,
+  draftReplayNote,
   executeReplayRequest,
   rejectReplayRequest,
+  replayNoteDraft,
+  replayNoteError,
+  replayNoteLoading,
   replayRequests,
   selectedDeadLetter,
   setSelectedDeadLetterId,
@@ -1612,8 +1858,12 @@ function RecoveryPage({
   approveReplayRequest: () => void;
   createReplayRequest: () => void;
   deadLetters: DeadLetter[];
+  draftReplayNote: () => void;
   executeReplayRequest: () => void;
   rejectReplayRequest: () => void;
+  replayNoteDraft: ReplayNoteDraft | null;
+  replayNoteError: string | null;
+  replayNoteLoading: boolean;
   replayRequests: ReplayRequest[];
   selectedDeadLetter: DeadLetter | undefined;
   setSelectedDeadLetterId: (deadLetterId: string) => void;
@@ -1705,6 +1955,61 @@ function RecoveryPage({
                 >
                   Execute replay
                 </PrimaryButton>
+              </div>
+              <div className="rounded-lg border border-indigo-100 bg-indigo-50/40 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-slate-900">
+                    AI Assistant
+                  </p>
+                  <SecondaryButton
+                    disabled={replayNoteLoading}
+                    onClick={draftReplayNote}
+                  >
+                    {replayNoteLoading ? "Drafting..." : "Draft replay note"}
+                  </SecondaryButton>
+                </div>
+                <p className="mt-2 text-sm text-slate-600">
+                  Drafts are suggestions only. They do not create, approve, or
+                  execute replay requests.
+                </p>
+                {replayNoteError ? (
+                  <p className="mt-3 text-sm text-rose-700">
+                    {replayNoteError}
+                  </p>
+                ) : null}
+                {replayNoteDraft ? (
+                  <div className="mt-3 grid gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusBadge status={replayNoteDraft.mode} />
+                      {replayNoteDraft.mode === "fallback" ? (
+                        <span className="text-xs text-slate-500">
+                          Local fallback mode
+                        </span>
+                      ) : null}
+                    </div>
+                    <KeyValue label="Reason" value={replayNoteDraft.reason} />
+                    <KeyValue
+                      label="Approval note"
+                      value={replayNoteDraft.approval_note}
+                    />
+                    <KeyValue
+                      label="Operator summary"
+                      value={replayNoteDraft.operator_summary}
+                    />
+                    {replayNoteDraft.warnings.length > 0 ? (
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Warnings
+                        </p>
+                        <ul className="mt-2 grid gap-1 text-sm text-slate-700">
+                          {replayNoteDraft.warnings.map((warning) => (
+                            <li key={warning}>{warning}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             </div>
           ) : (

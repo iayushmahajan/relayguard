@@ -111,3 +111,15 @@
 - [x] Added backend tests for safe destination and routing-rule updates
 - [x] Preserved database-free `make check` behavior
 - [ ] AI execution, authentication behavior, signature verification, background workers, external queues, Make.com, and n8n integrations not started
+
+## Phase 9 - AI-assisted operator helper
+- [x] Added safe AI helper API endpoints for delivery explanation, replay-note drafting, and sample webhook generation
+- [x] Added deterministic fallback provider behavior when no external AI provider is configured
+- [x] Added metadata-only service-layer context loading that excludes stored event payloads, response bodies, credentials, secrets, and full request bodies
+- [x] Added frontend AI Assistant panels for Webhook Tester, Deliveries, and Recovery
+- [x] Kept generated sample webhook payloads review-first and non-submitting
+- [x] Kept replay-note drafts advisory only; replay creation, approval, and execution remain explicit operator actions
+- [x] Added backend tests for fallback AI helper behavior, 404s, safe output, and no replay side effects
+- [x] Added frontend tests for AI helper rendering, explanation, replay draft, sample insertion, error state, and guided retry coverage
+- [x] Preserved database-free `make check` behavior
+- [ ] AI-controlled routing, retry classification, delivery execution, replay execution, autonomous agents, authentication behavior, signature verification, background workers, external queues, Make.com, and n8n integrations not started

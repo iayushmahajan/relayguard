@@ -1,8 +1,8 @@
 # RelayGuard
 
-RelayGuard Phase 8 provides guided browser demo automation, an operator dashboard, a local downstream demo receiver, a backend FastAPI app foundation, developer tooling, CI quality checks, process health routing, typed configuration, structured logging, request correlation IDs, lazy PostgreSQL async session infrastructure, a normalized PostgreSQL persistence foundation, idempotent baseline seeding, PostgreSQL integration validation, deterministic known-integration webhook intake, canonical accepted-event creation, duplicate detection, rejected receipt recording, safe event metadata retrieval, deterministic routing rules, downstream destination management, durable delivery scheduling records, HTTP delivery execution, retry attempt recording, durable retry jobs, dead-letter records, and a human-reviewed replay workflow for dead-letter recovery.
+RelayGuard Phase 9 provides a safe AI-assisted operator helper, guided browser demo automation, an operator dashboard, a local downstream demo receiver, a backend FastAPI app foundation, developer tooling, CI quality checks, process health routing, typed configuration, structured logging, request correlation IDs, lazy PostgreSQL async session infrastructure, a normalized PostgreSQL persistence foundation, idempotent baseline seeding, PostgreSQL integration validation, deterministic known-integration webhook intake, canonical accepted-event creation, duplicate detection, rejected receipt recording, safe event metadata retrieval, deterministic routing rules, downstream destination management, durable delivery scheduling records, HTTP delivery execution, retry attempt recording, durable retry jobs, dead-letter records, and a human-reviewed replay workflow for dead-letter recovery.
 
-Phase 8 intentionally includes **no startup database connection, background HTTP delivery worker, replay worker, authentication behavior, signature verification, AI execution, external queue, Redis, Celery, Kafka, Make.com, n8n, or cloud service dependency**. Replay execution remains explicit API-driven recovery only. AI assistance is planned later for failure explanation and recovery suggestions, but it is not implemented yet.
+Phase 9 intentionally includes **no startup database connection, background HTTP delivery worker, replay worker, authentication behavior, signature verification, AI-controlled reliability decisions, external queue, Redis, Celery, Kafka, Make.com, n8n, or cloud service dependency**. Replay execution remains explicit API-driven recovery only. The AI helper explains failures, drafts replay notes, and generates sample webhook payloads for operator review; it does not route events, classify retries, execute deliveries, approve replay, or modify configuration.
 
 ## Prerequisites (WSL/Linux)
 
@@ -67,9 +67,28 @@ The test Compose file defaults to host port `5434` to avoid common local Postgre
 - `POST /api/v1/replay-requests/{replay_request_id}/approve` - approve a pending replay request
 - `POST /api/v1/replay-requests/{replay_request_id}/reject` - reject a pending or unstarted approved replay request
 - `POST /api/v1/replay-requests/{replay_request_id}/execute` - explicitly execute an approved replay request
+- `POST /api/v1/ai/explain-delivery` - explain delivery failures from safe metadata
+- `POST /api/v1/ai/draft-replay-note` - draft replay request text without creating or approving replay
+- `POST /api/v1/ai/sample-webhook-payload` - generate a safe sample webhook envelope for review
 - `X-Correlation-ID` response header - valid inbound UUIDs are reused; otherwise the backend generates a UUID4
 
 The health endpoint does not check PostgreSQL readiness.
+
+## AI Assistant and fallback mode
+
+The dashboard includes an AI Assistant layer in the Webhook Tester, Deliveries, and Recovery pages:
+
+- Delivery explanations summarize failed or dead-lettered deliveries using safe metadata only.
+- Replay note drafts suggest a reason and approval note, but the operator must still create,
+  approve, and execute replay explicitly.
+- Sample webhook generation creates a JSON envelope that can be inserted into the tester for review;
+  it is never submitted automatically.
+
+If no external AI provider is configured, RelayGuard returns deterministic local fallback responses
+and labels them as `fallback` in the API and UI. The helper never sends stored event payloads,
+response bodies, credentials, secrets, or full request bodies to an AI provider. Deterministic
+webhook intake, deduplication, routing, scheduling, delivery execution, retry classification,
+dead-lettering, and replay execution remain normal application code.
 
 ## Full local browser demo
 

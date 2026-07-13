@@ -2,6 +2,7 @@
 
 from fastapi import FastAPI
 
+from app.api.ai_helper import router as ai_helper_router
 from app.api.delivery_execution import router as delivery_execution_router
 from app.api.events import router as events_router
 from app.api.health import router as health_router
@@ -30,6 +31,7 @@ def create_app() -> FastAPI:
     app.include_router(events_router)
     app.include_router(delivery_execution_router)
     app.include_router(replay_requests_router)
+    app.include_router(ai_helper_router)
     return app
 
 

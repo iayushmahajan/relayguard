@@ -12,10 +12,12 @@ flowchart LR
   S --> R[Routing + Scheduling\nDestinations, Rules, Deliveries]
   R --> E[Delivery Execution\nAttempts, Retries, Dead Letters]
   E --> P[Replay Recovery\nReview, Audit, Explicit Replay]
+  B --> H[AI Helper\nExplain, Draft, Sample]
   S --> D[(PostgreSQL\nNormalized persistence schema)]
   R --> D
   E --> D
   P --> D
+  H --> D
   P --> E
   E --> X[Downstream HTTP Endpoint\nExplicit POST execution]
   M[Alembic Async Migrations] --> D
@@ -23,7 +25,7 @@ flowchart LR
   CI --> B
 ```
 
-PostgreSQL remains unconnected during startup and normal unit tests. Phase 1B added SQLAlchemy ORM metadata and an immutable initial Alembic migration for the normalized persistence foundation. Phase 1C adds idempotent seeding, PostgreSQL-only integration validation against the isolated test database on host port `5434`, and a forward `0002` migration that expands replay-request terminal statuses. Phase 2 adds `0003_webhook_intake_support` for receipt request metadata, duplicate receipt status, event-type length alignment, and accepted event timestamps. Phase 3 adds `0004_routing_schedule` to enforce idempotent delivery scheduling for each event, destination, and routing rule. Phase 4 adds `0005_delivery_execution` to store delivery execution timestamps/errors, attempt outcomes, retry job claim/completion metadata, pending retry uniqueness, and dead-letter reason metadata. Phase 5 adds `0006_replay_workflow` to store replay update/execution/resolution timestamps and to treat `running` replay requests as active for database-backed uniqueness.
+PostgreSQL remains unconnected during startup and normal unit tests. Phase 1B added SQLAlchemy ORM metadata and an immutable initial Alembic migration for the normalized persistence foundation. Phase 1C adds idempotent seeding, PostgreSQL-only integration validation against the isolated test database on host port `5434`, and a forward `0002` migration that expands replay-request terminal statuses. Phase 2 adds `0003_webhook_intake_support` for receipt request metadata, duplicate receipt status, event-type length alignment, and accepted event timestamps. Phase 3 adds `0004_routing_schedule` to enforce idempotent delivery scheduling for each event, destination, and routing rule. Phase 4 adds `0005_delivery_execution` to store delivery execution timestamps/errors, attempt outcomes, retry job claim/completion metadata, pending retry uniqueness, and dead-letter reason metadata. Phase 5 adds `0006_replay_workflow` to store replay update/execution/resolution timestamps and to treat `running` replay requests as active for database-backed uniqueness. Phase 9 adds no migration; the AI helper reads safe metadata and returns structured assistant output without storing analyses.
 
 The schema uses UUID primary keys, UTC-aware timestamp columns, string status columns with check constraints, JSONB only for payload/configuration/schema/audit documents, and PostgreSQL partial unique indexes where domain rules require them.
 
@@ -82,3 +84,20 @@ Normal health/startup behavior and `make check` remain database-free. Replay exe
 7. Replay attempts that run but still fail mark the replay request `executed`, leave the dead letter open, and rely on Phase 4 idempotency to avoid duplicate retry jobs or duplicate dead-letter rows.
 8. Create, approve, reject, execute, resolved, and unresolved execution outcomes write safe `audit_logs` entries without payloads, response bodies, credentials, or secrets.
 9. Phase 5 keeps replay explicit and human-reviewed. It adds no background worker, external queue, authentication behavior, signature verification, AI execution, or frontend recovery UI.
+
+## Phase 9 AI helper flow
+
+1. The AI helper is an assistant layer exposed under `/api/v1/ai/*`.
+2. `explain-delivery` loads only safe metadata: delivery status, event type/status, destination
+   name/status/type, delivery attempt outcome/status code/error code, retry job status, and
+   dead-letter status. It never reads or sends stored event payload contents to the helper output.
+3. `draft-replay-note` loads dead-letter, delivery, attempt, and replay-request metadata, then
+   returns suggested reason/approval text. It does not create, approve, reject, or execute replay.
+4. `sample-webhook-payload` generates a sample webhook envelope for operator review. The frontend
+   can insert the sample into the Webhook Tester, but the user still submits explicitly.
+5. If no external AI provider is configured, the fallback provider returns deterministic structured
+   output and labels `mode: "fallback"`. Future providers must preserve the same metadata-only
+   prompt boundary and structured response shape.
+6. AI helper output never controls webhook intake, deduplication, routing, scheduling, delivery
+   execution, retry classification, dead-lettering, or replay execution. Those reliability
+   decisions remain deterministic application code.

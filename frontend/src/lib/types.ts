@@ -193,3 +193,26 @@ export type WebhookDraft = {
   source_event_id: string;
   payload: Record<string, unknown>;
 };
+
+export type AiMode = "fallback" | "ai";
+
+export type DeliveryExplanation = {
+  mode: AiMode;
+  summary: string;
+  likely_cause: string;
+  recommended_action: string;
+  risk_level: "low" | "medium" | "high";
+  supporting_facts: string[];
+};
+
+export type ReplayNoteDraft = {
+  mode: AiMode;
+  reason: string;
+  approval_note: string;
+  operator_summary: string;
+  warnings: string[];
+};
+
+export type SampleWebhookPayload = WebhookDraft & {
+  mode: AiMode;
+};

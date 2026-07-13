@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
 import type { WebhookDraft } from "../lib/types";
@@ -6,6 +6,8 @@ import type { WebhookDraft } from "../lib/types";
 type EventTesterProps = {
   disabled: boolean;
   onSubmit: (draft: WebhookDraft) => Promise<void>;
+  suggestedDraft?: WebhookDraft | null;
+  suggestedDraftVersion?: number;
 };
 
 const DEFAULT_PAYLOAD = JSON.stringify(
@@ -22,7 +24,12 @@ const DEFAULT_PAYLOAD = JSON.stringify(
 const DEFAULT_DEDUPLICATION_KEY = "demo-invoice-001";
 const DEFAULT_SOURCE_EVENT_ID = "stripe_evt_001";
 
-export function EventTester({ disabled, onSubmit }: EventTesterProps) {
+export function EventTester({
+  disabled,
+  onSubmit,
+  suggestedDraft,
+  suggestedDraftVersion = 0,
+}: EventTesterProps) {
   const [eventType, setEventType] = useState("invoice.paid");
   const [deduplicationKey, setDeduplicationKey] = useState(
     DEFAULT_DEDUPLICATION_KEY,
@@ -31,6 +38,17 @@ export function EventTester({ disabled, onSubmit }: EventTesterProps) {
   const [payloadText, setPayloadText] = useState(DEFAULT_PAYLOAD);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!suggestedDraft) {
+      return;
+    }
+    setEventType(suggestedDraft.event_type);
+    setDeduplicationKey(suggestedDraft.deduplication_key);
+    setSourceEventId(suggestedDraft.source_event_id);
+    setPayloadText(JSON.stringify(suggestedDraft.payload, null, 2));
+    setError(null);
+  }, [suggestedDraft, suggestedDraftVersion]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

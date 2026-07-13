@@ -182,6 +182,29 @@ describe("RelayGuard dashboard", () => {
     );
   });
 
+  it("shows retry-job steps in the guided retry scenario", async () => {
+    const fetchMock = vi.fn(createGuidedDemoFetch({ existingSetup: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: /Temporary Failure \+ Retry/i,
+      }),
+    );
+
+    expect(
+      await screen.findByText(/delivery failed with 503/i),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText(/retry job is pending/i),
+    ).toBeInTheDocument();
+    expect(getFetchOperations(fetchMock)).toContain(
+      "POST /api/v1/deliveries/delivery-retry/execute",
+    );
+  });
+
   it("loads recent deliveries when the Deliveries page opens", async () => {
     const fetchMock = vi.fn(mockDashboardFetch);
     vi.stubGlobal("fetch", fetchMock);
@@ -220,6 +243,110 @@ describe("RelayGuard dashboard", () => {
     expect(await screen.findByText("demo.success")).toBeInTheDocument();
     expect(screen.getAllByText("Success Receiver").length).toBeGreaterThan(0);
     expect(screen.getAllByText("delivered").length).toBeGreaterThan(0);
+  });
+
+  it("explains a failed delivery from the AI helper", async () => {
+    const fetchMock = vi.fn(mockAiDashboardFetch);
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const navigation = await screen.findByRole("navigation", {
+      name: /Dashboard sections/i,
+    });
+    await userEvent.click(
+      within(navigation).getByRole("button", { name: "Deliveries" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Explain failure" }),
+    );
+
+    expect(
+      await screen.findByText("Temporary downstream outage."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Last attempt returned HTTP 503."),
+    ).toBeInTheDocument();
+    expect(getFetchOperations(fetchMock)).toContain(
+      "POST /api/v1/ai/explain-delivery",
+    );
+  });
+
+  it("drafts replay text without creating a replay request", async () => {
+    const fetchMock = vi.fn(mockAiDashboardFetch);
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const navigation = await screen.findByRole("navigation", {
+      name: /Dashboard sections/i,
+    });
+    await userEvent.click(
+      within(navigation).getByRole("button", { name: "Recovery" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Draft replay note" }),
+    );
+
+    expect(await screen.findByText("Replay after repair.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Approved after endpoint check."),
+    ).toBeInTheDocument();
+    expect(getFetchOperations(fetchMock)).not.toContain(
+      "POST /api/v1/dead-letters/dead-letter-ai/replay-requests",
+    );
+  });
+
+  it("inserts generated sample payloads without submitting a webhook", async () => {
+    const fetchMock = vi.fn(mockDashboardFetch);
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const navigation = await screen.findByRole("navigation", {
+      name: /Dashboard sections/i,
+    });
+    await userEvent.click(
+      within(navigation).getByRole("button", { name: "Webhook Tester" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Generate sample payload" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Insert into tester" }),
+    );
+
+    expect(screen.getByLabelText(/^Event type$/i)).toHaveValue("invoice.paid");
+    expect(screen.getByLabelText(/Deduplication key/i)).toHaveValue(
+      "sample-invoice-paid",
+    );
+    expect(
+      (screen.getByLabelText(/Payload JSON/i) as HTMLTextAreaElement).value,
+    ).toContain('"currency": "EUR"');
+    expect(getFetchOperations(fetchMock)).not.toContain(
+      "POST /api/v1/integrations/stripe-sandbox/webhooks",
+    );
+  });
+
+  it("shows AI helper errors without crashing", async () => {
+    const fetchMock = vi.fn(mockAiErrorFetch);
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const navigation = await screen.findByRole("navigation", {
+      name: /Dashboard sections/i,
+    });
+    await userEvent.click(
+      within(navigation).getByRole("button", { name: "Webhook Tester" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Generate sample payload" }),
+    );
+
+    expect(
+      await screen.findByText("AI helper unavailable"),
+    ).toBeInTheDocument();
   });
 
   it("blocks routing rule creation until a destination exists", async () => {
@@ -422,7 +549,116 @@ function responseFor(url: string) {
   if (url.includes("/replay-requests")) {
     return [];
   }
+  if (url.includes("/ai/sample-webhook-payload")) {
+    return {
+      mode: "fallback",
+      event_type: "invoice.paid",
+      deduplication_key: "sample-invoice-paid",
+      source_event_id: "sample_evt_001",
+      payload: {
+        invoice_id: "inv_sample_001",
+        customer_id: "cus_sample_001",
+        amount: 4999,
+        currency: "EUR",
+      },
+    };
+  }
   return {};
+}
+
+function mockAiDashboardFetch(input: RequestInfo | URL, init?: RequestInit) {
+  const url = typeof input === "string" ? input : input.toString();
+  if (url.includes("/ai/explain-delivery") && init?.method === "POST") {
+    return jsonResponse({
+      mode: "fallback",
+      summary: "The downstream service returned a retryable error.",
+      likely_cause: "Temporary downstream outage.",
+      recommended_action: "Retry after checking downstream health.",
+      risk_level: "medium",
+      supporting_facts: [
+        "Delivery status is failed.",
+        "Last attempt returned HTTP 503.",
+      ],
+    });
+  }
+  if (url.includes("/ai/draft-replay-note") && init?.method === "POST") {
+    return jsonResponse({
+      mode: "fallback",
+      reason: "Replay after repair.",
+      approval_note: "Approved after endpoint check.",
+      operator_summary: "Dead letter is open with severity high.",
+      warnings: ["Confirm the downstream destination is fixed."],
+    });
+  }
+  if (url.includes("/deliveries?limit=50")) {
+    return jsonResponse([
+      {
+        delivery_id: "delivery-ai",
+        event_id: "event-ai",
+        event_type: "invoice.paid",
+        destination_id: "destination-ai",
+        destination_name: "Retry Receiver",
+        routing_rule_id: "rule-ai",
+        routing_rule_name: "Retry route",
+        status: "failed",
+        attempt_count: 1,
+        next_attempt_at: "2026-07-12T00:01:00Z",
+        last_attempt_at: "2026-07-12T00:00:00Z",
+        created_at: "2026-07-12T00:00:00Z",
+        updated_at: "2026-07-12T00:00:00Z",
+      },
+    ]);
+  }
+  if (url.includes("/attempts")) {
+    return jsonResponse([
+      {
+        attempt_id: "attempt-ai",
+        delivery_id: "delivery-ai",
+        attempt_number: 1,
+        outcome: "failed",
+        response_status_code: 503,
+        error_code: "http_503",
+        error_message: "HTTP 503",
+        is_retryable: true,
+        started_at: "2026-07-12T00:00:00Z",
+        finished_at: "2026-07-12T00:00:00Z",
+        created_at: "2026-07-12T00:00:00Z",
+      },
+    ]);
+  }
+  if (url.includes("/retry-jobs")) {
+    return jsonResponse([]);
+  }
+  if (url.endsWith("/dead-letters")) {
+    return jsonResponse([
+      {
+        dead_letter_id: "dead-letter-ai",
+        delivery_id: "delivery-ai",
+        severity: "high",
+        reason_code: "http_404",
+        reason_message: "Rejected",
+        resolution_status: "open",
+        dead_lettered_at: "2026-07-12T00:00:00Z",
+        resolved_at: null,
+        created_at: "2026-07-12T00:00:00Z",
+        updated_at: "2026-07-12T00:00:00Z",
+      },
+    ]);
+  }
+  return mockDashboardFetch(input);
+}
+
+function mockAiErrorFetch(input: RequestInfo | URL, init?: RequestInit) {
+  const url = typeof input === "string" ? input : input.toString();
+  if (url.includes("/ai/sample-webhook-payload") && init?.method === "POST") {
+    return Promise.resolve(
+      new Response(JSON.stringify({ detail: "AI helper unavailable" }), {
+        headers: { "Content-Type": "application/json" },
+        status: 503,
+      }),
+    );
+  }
+  return mockDashboardFetch(input);
 }
 
 function mockDashboardFetchWithDestinations(
@@ -503,6 +739,11 @@ function createGuidedDemoFetch({ existingSetup }: { existingSetup: boolean }) {
           "Reject Receiver",
           "http://127.0.0.1:9000/reject",
         ),
+        destinationFixture(
+          "destination-retry",
+          "Retry Receiver",
+          "http://127.0.0.1:9000/fail",
+        ),
       ]
     : [];
   const routingRules = existingSetup
@@ -518,6 +759,12 @@ function createGuidedDemoFetch({ existingSetup }: { existingSetup: boolean }) {
           "Demo Recovery Route",
           "demo.recovery",
           "destination-recovery",
+        ),
+        routingRuleFixture(
+          "rule-retry",
+          "Demo Retry Route",
+          "demo.retry",
+          "destination-retry",
         ),
       ]
     : [];
@@ -536,6 +783,14 @@ function createGuidedDemoFetch({ existingSetup }: { existingSetup: boolean }) {
         "event-recovery",
         "destination-recovery",
         "rule-recovery",
+      ),
+    ],
+    "event-retry": [
+      deliveryFixture(
+        "delivery-retry",
+        "event-retry",
+        "destination-retry",
+        "rule-retry",
       ),
     ],
   };
@@ -557,10 +812,14 @@ function createGuidedDemoFetch({ existingSetup }: { existingSetup: boolean }) {
     }
     if (url.endsWith("/destinations") && method === "POST") {
       const body = JSON.parse(String(init?.body));
-      const destination = destinationFixture(
+      const destinationId =
         body.name === "Success Receiver"
           ? "destination-success"
-          : "destination-recovery",
+          : body.name === "Retry Receiver"
+            ? "destination-retry"
+            : "destination-recovery";
+      const destination = destinationFixture(
+        destinationId,
         body.name,
         body.endpoint_url,
       );
@@ -584,8 +843,14 @@ function createGuidedDemoFetch({ existingSetup }: { existingSetup: boolean }) {
     }
     if (url.endsWith("/routing-rules") && method === "POST") {
       const body = JSON.parse(String(init?.body));
+      const routingRuleId =
+        body.event_type === "demo.success"
+          ? "rule-success"
+          : body.event_type === "demo.retry"
+            ? "rule-retry"
+            : "rule-recovery";
       const rule = routingRuleFixture(
-        body.event_type === "demo.success" ? "rule-success" : "rule-recovery",
+        routingRuleId,
         body.name,
         body.event_type,
         body.destination_id,
@@ -609,7 +874,12 @@ function createGuidedDemoFetch({ existingSetup }: { existingSetup: boolean }) {
     }
     if (url.includes("/webhooks") && method === "POST") {
       const body = JSON.parse(String(init?.body));
-      const key = body.event_type === "demo.recovery" ? "recovery" : "success";
+      const key =
+        body.event_type === "demo.recovery"
+          ? "recovery"
+          : body.event_type === "demo.retry"
+            ? "retry"
+            : "success";
       return jsonResponse(
         {
           receipt_id: `receipt-${key}`,
@@ -638,6 +908,17 @@ function createGuidedDemoFetch({ existingSetup }: { existingSetup: boolean }) {
     }
     if (url.endsWith("/execute") && url.includes("/deliveries/")) {
       const deliveryId = url.split("/").at(-2);
+      if (deliveryId === "delivery-retry") {
+        updateDeliveryStatus(deliveries, "delivery-retry", "failed");
+        return jsonResponse({
+          delivery_id: deliveryId,
+          status: "failed",
+          attempt_number: 1,
+          retry_scheduled: true,
+          dead_lettered: false,
+          next_attempt_at: "2026-07-12T00:05:00Z",
+        });
+      }
       if (deliveryId === "delivery-recovery") {
         updateDeliveryStatus(deliveries, "delivery-recovery", "dead_lettered");
         deadLetters.push({
@@ -689,6 +970,20 @@ function createGuidedDemoFetch({ existingSetup }: { existingSetup: boolean }) {
       ]);
     }
     if (url.includes("/retry-jobs")) {
+      if (url.includes("delivery-retry")) {
+        return jsonResponse([
+          {
+            retry_job_id: "retry-job-retry",
+            delivery_id: "delivery-retry",
+            status: "pending",
+            run_at: "2026-07-12T00:05:00Z",
+            claimed_at: null,
+            completed_at: null,
+            created_at: "2026-07-12T00:00:00Z",
+            updated_at: "2026-07-12T00:00:00Z",
+          },
+        ]);
+      }
       return jsonResponse([]);
     }
     if (url.endsWith("/dead-letters") && method === "GET") {
@@ -828,16 +1123,27 @@ function deliveryFixture(
   routingRuleId: string,
 ) {
   const isRecovery = deliveryId.includes("recovery");
+  const isRetry = deliveryId.includes("retry");
   return {
     delivery_id: deliveryId,
     event_id: eventId,
-    event_type: isRecovery ? "demo.recovery" : "demo.success",
+    event_type: isRecovery
+      ? "demo.recovery"
+      : isRetry
+        ? "demo.retry"
+        : "demo.success",
     destination_id: destinationId,
-    destination_name: isRecovery ? "Reject Receiver" : "Success Receiver",
+    destination_name: isRecovery
+      ? "Reject Receiver"
+      : isRetry
+        ? "Retry Receiver"
+        : "Success Receiver",
     routing_rule_id: routingRuleId,
     routing_rule_name: isRecovery
       ? "Demo Recovery Route"
-      : "Demo Success Route",
+      : isRetry
+        ? "Demo Retry Route"
+        : "Demo Success Route",
     status: "scheduled",
     next_attempt_at: "2026-07-12T00:00:00Z",
     last_attempt_at: null,

@@ -1,4 +1,5 @@
 import type {
+  DeliveryExplanation,
   DeadLetter,
   Delivery,
   DeliveryAttempt,
@@ -17,6 +18,8 @@ import type {
   RoutingRule,
   RoutingRuleDraft,
   RoutingRuleUpdateDraft,
+  ReplayNoteDraft,
+  SampleWebhookPayload,
   WebhookDraft,
   WebhookResult,
 } from "./types";
@@ -194,4 +197,27 @@ export const api = {
         method: "POST",
       },
     ),
+  explainDelivery: (deliveryId: string) =>
+    request<DeliveryExplanation>("/ai/explain-delivery", {
+      method: "POST",
+      body: { delivery_id: deliveryId },
+    }),
+  draftReplayNote: (deadLetterId: string) =>
+    request<ReplayNoteDraft>("/ai/draft-replay-note", {
+      method: "POST",
+      body: { dead_letter_id: deadLetterId },
+    }),
+  sampleWebhookPayload: (
+    eventType: string,
+    description: string,
+    integrationSlug?: string,
+  ) =>
+    request<SampleWebhookPayload>("/ai/sample-webhook-payload", {
+      method: "POST",
+      body: {
+        event_type: eventType,
+        description: description.trim() === "" ? undefined : description,
+        integration_slug: integrationSlug,
+      },
+    }),
 };

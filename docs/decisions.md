@@ -218,3 +218,10 @@
 - **Details:** Guided Mode creates or reuses stable demo destinations and routing rules, submits unique demo webhooks, schedules and executes deliveries, and performs replay recovery through normal backend APIs. It avoids duplicate setup by reusing or safely updating existing demo configuration.
 - **AI boundary:** Phase 8 automation is deterministic application behavior. Future AI may explain failures and suggest recovery actions, but no AI execution, classification, or recommendation behavior is implemented in this phase.
 - **Backend support:** Safe `PATCH` endpoints for destinations and routing rules were added so the guided recovery scenario can repair a destination endpoint and so demo setup can reactivate/update existing configuration without schema changes.
+
+## Entry 36
+- **Decision:** Add AI only as an operator-assistance layer for explanation, replay-note drafting, and sample webhook generation.
+- **Rationale:** Operators benefit from plain-English summaries and draft text, but RelayGuard's reliability guarantees depend on deterministic application code and database-backed rules.
+- **Date:** 2026-07-13
+- **Details:** Phase 9 adds structured helper endpoints under `/api/v1/ai/*` and a frontend AI Assistant panel. The active provider is deterministic fallback mode when no external provider is configured.
+- **Safety boundary:** AI helper code reads only safe metadata and must not receive stored event payloads, response bodies, credentials, secrets, or full request bodies. It does not execute deliveries, approve replay requests, execute replay, modify destinations, modify routing rules, create retry jobs, or influence webhook intake, deduplication, routing, retry classification, dead-lettering, or replay execution decisions.

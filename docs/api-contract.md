@@ -501,3 +501,87 @@ Successful replay uses replay status `resolved`, marks the original dead letter 
 resolution timestamps. Replay attempts that run but do not resolve the dead letter use replay
 status `executed`; the dead letter remains open. Replay execution does not create a new canonical
 event, does not erase previous attempts, and does not create duplicate dead-letter records.
+
+## AI Helper
+
+The AI helper endpoints are an assistant layer only. They return structured explanations, drafts,
+and sample data for operator review. They do not execute deliveries, approve replay, submit
+webhooks, modify destinations, modify routing rules, create retry jobs, or make deterministic
+reliability decisions. Fallback mode is available without an external AI provider.
+
+`POST /api/v1/ai/explain-delivery`
+
+```json
+{"delivery_id": "00000000-0000-0000-0000-000000000000"}
+```
+
+Unknown deliveries return `404`. RelayGuard loads safe delivery metadata, event type/status,
+destination name/status/type, safe attempt metadata, retry job state, and dead-letter state. It
+never includes stored event payloads, response bodies, destination configuration, credentials, or
+secrets.
+
+```json
+{
+  "mode": "fallback",
+  "summary": "The last delivery attempt failed with a retryable downstream response.",
+  "likely_cause": "Temporary downstream outage.",
+  "recommended_action": "Wait for the pending retry job or retry after checking downstream health.",
+  "risk_level": "medium",
+  "supporting_facts": [
+    "Delivery status is failed.",
+    "Last attempt returned HTTP 503.",
+    "1 pending retry job exists."
+  ]
+}
+```
+
+`POST /api/v1/ai/draft-replay-note`
+
+```json
+{"dead_letter_id": "00000000-0000-0000-0000-000000000000"}
+```
+
+Unknown dead letters return `404`. The endpoint drafts text only; it does not create, approve,
+reject, or execute replay requests.
+
+```json
+{
+  "mode": "fallback",
+  "reason": "Downstream recovery has been verified after terminal delivery failure HTTP 404; replay is requested for the original delivery.",
+  "approval_note": "Approved for replay after confirming the destination endpoint is healthy and the failed delivery remains appropriate to resend.",
+  "operator_summary": "Dead letter 00000000-0000-0000-0000-000000000000 is open with severity high and reason http_404.",
+  "warnings": [
+    "Confirm the downstream destination is fixed before executing replay.",
+    "Replay should be reviewed by an operator; this draft does not approve or execute it."
+  ]
+}
+```
+
+`POST /api/v1/ai/sample-webhook-payload`
+
+```json
+{
+  "event_type": "invoice.paid",
+  "description": "A paid invoice event for a European customer",
+  "integration_slug": "stripe-sandbox"
+}
+```
+
+The endpoint returns a safe sample webhook envelope for user review. The frontend may insert it
+into the Webhook Tester, but RelayGuard does not submit it automatically.
+
+```json
+{
+  "mode": "fallback",
+  "event_type": "invoice.paid",
+  "deduplication_key": "sample-invoice_paid-abc123",
+  "source_event_id": "sample_evt_abc123",
+  "payload": {
+    "invoice_id": "inv_sample_abc123",
+    "customer_id": "cus_sample_abc123",
+    "amount": 4999,
+    "currency": "EUR",
+    "event_type": "invoice.paid"
+  }
+}
+```
